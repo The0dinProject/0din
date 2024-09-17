@@ -1,0 +1,10 @@
+{
+    "INDEX": "/path/to/index.json",
+    "NODE_ID": "127.0.0.1:5000",
+    "LAST_EXECUTION_FILE": "last_execution.txt",
+    "INDEX_FILES_TIME": 1,
+    "PEER_DISCOVER_INTERVAL": 1,
+    "DIRECTORY": "/the/directory/to/be/shared",
+    "URL": "https://raw.githubusercontent.com/username/repository/branch/path/to/file.json",
+    "HEARTBEAT_INTERVAL": 10
+}

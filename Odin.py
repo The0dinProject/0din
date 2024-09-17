@@ -1,17 +1,18 @@
 import os
-import socket
-from colorlog import ColoredFormatter
-from datetime import datetime, timedelta
-from flask import Flask, render_template, redirect, request, jsonify, send_file, abort
-import indexer
 import json
+import time
 import logging
-import peer_discovery
+import secrets
 import requests
+import threading
 import sched
 import search
-import threading
-import time
+import peer_discovery
+import indexer
+from datetime import datetime, timedelta
+from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
+from colorlog import ColoredFormatter
 
 # Logging configuration
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -26,41 +27,142 @@ formatter = ColoredFormatter(
         'CRITICAL': 'bold_red',
     }
 )
-
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
-
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)  # Set to the desired level
+logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
-INDEX = '/path/to/index.json'
-NODE_ID = "127.0.0.1:5000"
-LAST_EXECUTION_FILE = 'last_execution.txt'
-INDEX_FILES_TIME = 1  # Hour to run the indexer task (24-hour format)
-PEER_DISCOVER_INTERVAL = 1  # Interval in hours for the announcer task
-DIRECTORY = "/the/directory/to/be/shared"
-URL = "https://raw.githubusercontent.com/username/repository/branch/path/to/file.json"
-HEARTBEAT_INTERVAL = 10  # Heartbeat check interval in minutes
-
+# Global variables
 known_nodes = set()
 announced_nodes = set()
 
+# Flask application
 app = Flask(__name__)
 scheduler = sched.scheduler(time.time, time.sleep)
+app.secret_key = secrets.token_hex(16)
 
+# Default configuration
+DEFAULT_CONFIG = {
+    'INDEX': '/path/to/index.json',
+    'NODE_ID': '127.0.0.1:5000',
+    'LAST_EXECUTION_FILE': 'last_execution.txt',
+    'INDEX_FILES_TIME': 1,
+    'PEER_DISCOVER_INTERVAL': 1,
+    'DIRECTORY': '/the/directory/to/be/shared',
+    'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
+    'HEARTBEAT_INTERVAL': 10
+}
+
+def setup_admin_credentials(username, password):
+    hashed_password = generate_password_hash(password)
+    with open('credentials.json', 'w') as f:
+        json.dump({'username': username, 'password': hashed_password}, f)
+
+def initialize_settings():
+    if not os.path.exists('settings.json'):
+        with open('settings.json', 'w') as f:
+            json.dump(DEFAULT_CONFIG, f, indent=4)
+    with open('settings.json') as f:
+        config = json.load(f)
+    for key, value in DEFAULT_CONFIG.items():
+        globals()[key] = config.get(key, value)
+
+def load_constants():
+    if os.path.exists('settings.json'):
+        with open('settings.json') as f:
+            return json.load(f)
+    return DEFAULT_CONFIG.copy()
+
+def save_constants(config):
+    with open('settings.json', 'w') as f:
+        json.dump(config, f, indent=4)
+
+def load_credentials():
+    if os.path.exists('credentials.json'):
+        with open('credentials.json') as f:
+            return json.load(f)
+    return {'username': 'admin', 'password': generate_password_hash('admin')}
+
+@app.before_request
+def check_setup():
+    if not os.path.exists('credentials.json'):
+        if request.endpoint not in ['setup', 'login']:
+            return redirect(url_for('setup'))
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    if os.path.exists('credentials.json'):
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        setup_admin_credentials(username, password)
+        return redirect(url_for('login'))
+    
+    return render_template('setup.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        credentials = load_credentials()
+        if username == credentials['username'] and check_password_hash(credentials['password'], password):
+            session['logged_in'] = True
+            return redirect(url_for('admin'))
+        else:
+            return 'Invalid credentials', 401
+    return render_template('login.html')
+
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+    config = load_constants()
+
+    if request.method == 'POST':
+        for key in config:
+            if key in request.form:
+                try:
+                    config[key] = json.loads(request.form[key])
+                except ValueError:
+                    config[key] = request.form[key]
+        save_constants(config)
+
+    return render_template('admin.html', config=config)
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+    return 'Server shutting down...'
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+    os.execv(__file__, ['python'] + [__file__])
+    return 'Server restarting...'
 
 def run_indexer():
-    global known_nodes
     logger.info("Running indexer...")
     indexer.indexer(DIRECTORY, INDEX)
     
-    # Schedule the next run
     next_run = datetime.now() + timedelta(hours=24)
     delay = (next_run - datetime.now()).total_seconds()
     logger.info(f"Scheduling indexer for the next run in 24 hours")
     scheduler.enter(delay, 1, run_indexer)
-
 
 def run_announcer():
     global known_nodes, announced_nodes
@@ -81,11 +183,9 @@ def run_announcer():
     if not new_nodes_discovered:
         logger.info("No new nodes discovered, stopping announcer.")
     
-    # Schedule the next run
-    delay = PEER_DISCOVER_INTERVAL * 3600  # Convert hours to seconds
+    delay = PEER_DISCOVER_INTERVAL * 3600
     logger.info(f"Scheduling announcer for the next run in {PEER_DISCOVER_INTERVAL} hours")
     scheduler.enter(delay, 1, run_announcer)
-
 
 def run_heartbeat_checker():
     global known_nodes
@@ -98,23 +198,18 @@ def run_heartbeat_checker():
             nodes_to_remove.add(node)
         elif result == 2:
             logger.error("No internet connection, cannot perform heartbeat check.")
-            break  # Stop checking if there's no internet connection
+            break
     
     known_nodes.difference_update(nodes_to_remove)
     logger.info(f"Updated known nodes: {known_nodes}")
     
-    # Schedule the next heartbeat check
-    delay = HEARTBEAT_INTERVAL * 60  # Convert minutes to seconds
+    delay = HEARTBEAT_INTERVAL * 60
     logger.info(f"Scheduling heartbeat checker for the next run in {HEARTBEAT_INTERVAL} minutes")
     scheduler.enter(delay, 1, run_heartbeat_checker)
 
-
 def schedule_tasks():
-    global known_nodes
-    # Calculate delay until the next occurrence of INDEX_FILES_TIME
     now = datetime.now()
     next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=INDEX_FILES_TIME)
-    
     if now > next_index_run:
         next_index_run += timedelta(days=1)
     
@@ -122,7 +217,6 @@ def schedule_tasks():
     logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
     scheduler.enter(delay_index, 1, run_indexer)
     
-    # Run announcer once at startup and then periodically
     response = requests.get(URL)
     if response.status_code == 200:
         data = json.loads(response.text)
@@ -131,9 +225,9 @@ def schedule_tasks():
         logger.error(f"Failed to download node list, status code {response.status_code}")
         return None
 
-    run_announcer()  # Run at startup
+    run_announcer()
     scheduler.enter(0, 1, run_announcer)
-    run_heartbeat_checker()  # Run heartbeat checker at startup
+    run_heartbeat_checker()
     scheduler.enter(0, 1, run_heartbeat_checker)
 
 def run_scheduler():
@@ -141,12 +235,10 @@ def run_scheduler():
         scheduler.run(blocking=False)
         time.sleep(1)
 
-# Route for the homepage with the search bar
 @app.route('/')
 def home():
     return render_template('index.html')
 
-# Route to handle global search and redirect to results page
 @app.route('/global_search', methods=['POST'])
 def global_search_route():
     query = request.form.get('query')
@@ -154,91 +246,43 @@ def global_search_route():
     if category == 'all':
         category = None
     
-    # Perform global search
     results = search.global_search(INDEX, query, known_nodes, NODE_ID, "name", category)
     
-    # Render search results
     return render_template('results.html', query=query, category=category, results=results)
 
 @app.route('/md5_search/<md5_hash>')
 def md5_search(md5_hash):
-    # Perform global search by MD5
     results = search.global_search(INDEX, md5_hash, known_nodes, NODE_ID, "md5")
     
-    # Render the results page for the MD5 search
     return render_template('md5_results.html', md5_hash=md5_hash, results=results)
 
-# Route to redirect the user to the appropriate node's download URL
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
-    # Construct the download URL
     download_url = f"/file/{md5_hash}"
-    
-    # Redirect the user to the download URL on the same server
     return redirect(download_url)
 
-# Route to serve the file based on MD5 hash
 @app.route('/file/<md5_hash>')
 def serve_file(md5_hash):
-    # Perform local search for the MD5 hash
     matches = search.local_search(INDEX, md5_hash, NODE_ID, 'md5')
-    
     if not matches:
-        abort(404)  # File not found
+        abort(404)
     
-    # Assume the first match is the correct file (if there are multiple matches, handle accordingly)
-    match = matches[0]
-    file_path = match['path']
+    file_path = matches[0].get('file_path')
+    if os.path.exists(file_path):
+        return send_file(file_path, as_attachment=True)
     
-    # Ensure the file is within the allowed directory
-    if not os.path.commonprefix([os.path.abspath(file_path), os.path.abspath(DIRECTORY)]) == os.path.abspath(DIRECTORY):
-        abort(403)  # Forbidden
+    abort(404)
 
-    return send_file(file_path, as_attachment=True)
-
-@app.route('/announce', methods=['POST'])
-def announce():
-    # Extract data from the POST request
-    data = request.get_json()
-    
-    node_id = data.get('node_id')
-    received_known_nodes = data.get('received_known_nodes', [])
-    response_url = data.get('response_url')
-    
-    # Ensure all required fields are present
-    if not all([node_id, response_url]):
-        return jsonify({"error": "Missing node_id or response_url"}), 400
-
-    # Call the handle_announcement function
-    updated_known_nodes = peer_discovery.handle_announcement(
-        node_id,
-        received_known_nodes,
-        known_nodes,
-        announced_nodes,
-        response_url
-    )
-    
-    # Return the updated list of known nodes
-    return jsonify({"known_nodes": list(updated_known_nodes)}), 200
-
-@app.route('/heartbeat', methods=['GET'])
+@app.route('/heartbeat', methods=['POST'])
 def heartbeat():
-    """
-    Endpoint to confirm that the node is alive.
-    
-    Returns:
-        str: A simple text response to confirm the node is alive.
-    """
-    return "Heartbeat OK", 200
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    return 'Heartbeat received', 200
 
 if __name__ == '__main__':
-    # Start the scheduler
+    initialize_settings()
     schedule_tasks()
-
-    # Run the background scheduler in a separate thread
-    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread = threading.Thread(target=run_scheduler)
     scheduler_thread.start()
-
-    # Start the Flask server
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
