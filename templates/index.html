@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Search</title>
+</head>
+<body>
+    <h1>Global Search</h1>
+    <form action="/global_search" method="POST">
+        <label for="query">Search:</label>
+        <input type="text" id="query" name="query" required>
+        
+        <label for="category">Category (optional):</label>
+        <select id="category" name="category">
+            <option value="all">All</option>
+            <option value="movie">Movie</option>
+            <option value="tv show">TV Show</option>
+            <option value="book">Book</option>
+            <option value="audiobook">Audiobook</option>
+            <option value="audio">Audio</option>
+            <option value="video">Video</option>
+            <option value="picture">Picture</option>
+            <option value="plaintext">Plaintext</option>
+        </select>
+        
+        <button type="submit">Search</button>
+    </form>
+</body>
+</html>
+
