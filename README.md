@@ -14,7 +14,14 @@ To run Odin on your machine, follow these steps:
 
    cd Odin
 
-2. **Activate the virtual environment**:
+2. **Create and activate a virtual environment**:
+   
+   Run the following command in your project directory to create a virtual environment:
+   ```bash
+   python3 -m venv .venv
+   ```
+
+   To activate the virtual environment, execute one of the following commands:
    
    On macOS and Linux:
    ```bash
@@ -25,11 +32,11 @@ To run Odin on your machine, follow these steps:
    ```bash
    .venv\Scripts\activate
    ```
-3. **Install dependencies**:
+4. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
 
-4. **Run the application:**:
+5. **Run the application:**:
    ```bash
    python Odin.py
 ## Key Features
