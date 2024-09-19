@@ -29,7 +29,7 @@ To run Odin on your machine, follow these steps:
    ```bash
    pip install -r requirements.txt
 
-4. **Run the application:***:
+4. **Run the application:**:
    ```bash
    python Odin.py
 ## Key Features
