@@ -4,6 +4,34 @@ Decentralized Federated File Hosting Platform
 ## Overview
 
 Odin is an early alpha-stage decentralized federated file hosting platform designed to offer a scalable, user-friendly solution for sharing and accessing files across a distributed network. It merges the benefits of decentralization and federation to create a dynamic and resilient file-sharing ecosystem.
+
+## Installation
+To run Odin on your machine, follow these steps:
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/4rtemis-4rrow/Odin.git
+
+   cd Odin
+
+2. **Activate the virtual environment**:
+   
+   On macOS and Linux:
+   ```bash
+   source .venv/bin/activate
+   ```
+
+   On Windows:
+   ```bash
+   .venv\Scripts\activate
+   ```
+3. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+
+4. **Run the application:***:
+   ```bash
+   python Odin.py
 ## Key Features
 
 Decentralized Hosting: Operates on a distributed network of nodes, each contributing to the overall system, ensuring robustness and redundancy.
