@@ -98,3 +98,7 @@ body.light-theme a:hover {
     text-decoration: underline;
 }
 
+body.light-theme h1 {
+    color: #333333;
+}
+
