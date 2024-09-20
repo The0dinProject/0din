@@ -21,3 +21,6 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Odin related files
+credentials.json
