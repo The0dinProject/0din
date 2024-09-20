@@ -119,4 +119,11 @@ Proxying Nodes: Support for proxying one node over another, which is useful for 
 
 Odin is currently in early alpha. While the core features are functional, the project is still under development and is not yet ready for production use. We welcome feedback and contributions as we work towards a stable release.
 
+## How to Reach Us
+
+We welcome feedback and contributions! You can connect with us on the following channels:
+
+- **Discord**: You can [join the Odin Discord server](https://discord.gg/WCR7D8xK2s).
+
+- **GitHub Discussions**: Join the conversation, ask questions, and share ideas in our [GitHub Discussions](https://github.com/4rtemis-4rrow/Odin/discussions).
 

@@ -5,4 +5,15 @@
 # Learn more from ready-to-use templates: https://www.gitpod.io/docs/introduction/getting-started/quickstart
 
 tasks:
-  - init: source .venv/bin/activate && pip install -r requirements.txt
+  - init: |
+      python3 -m venv .venv
+      source .venv/bin/activate
+      pip install -r requirements.txt
+  - command: |
+      source .venv/bin/activate
+      python Odin.py
+ports:
+  - port: 5000
+    onOpen: open-preview
+  - port: 8000
+    onOpen: open-preview
