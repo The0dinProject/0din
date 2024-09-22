@@ -66,6 +66,16 @@ a:hover {
     cursor: pointer;
 }
 
+/* Logo Style */
+.logo {
+    position: absolute; /* Position it absolutely */
+    top: 10px; /* Adjust as needed */
+    left: 10px; /* Adjust as needed */
+    width: 100px; /* Adjust the size */
+    height: auto; /* Maintain aspect ratio */
+    z-index: 1000; /* Ensure it appears above other content */
+}
+
 /* Light Theme Styles */
 body.light-theme {
     background-color: #f0f0f0;
