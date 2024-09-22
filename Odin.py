@@ -9,6 +9,7 @@ import sched
 import search
 import peer_discovery
 import indexer
+import psycopg2
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -40,7 +41,6 @@ app.secret_key = secrets.token_hex(16)
 
 # Default configuration
 DEFAULT_CONFIG = {
-    'INDEX': '/path/to/index.json',
     'NODE_ID': os.getenv('NODE_ID', '127.0.0.1:5000'),
     'LAST_EXECUTION_FILE': 'last_execution.txt',
     'INDEX_FILES_TIME': 1,
@@ -61,7 +61,15 @@ def setup_admin_credentials(username, password):
     with open('credentials.json', 'w') as f:
         json.dump({'username': username, 'password': hashed_password}, f)
 
-# Initialize settings
+def get_db_connection():
+    return psycopg2.connect(
+        dbname=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        host=os.getenv('DB_HOST', 'localhost'),
+        port=os.getenv('DB_PORT', '5432')
+    )
+
 def initialize_settings():
     if not os.path.exists('settings.json'):
         with open('settings.json', 'w') as f:
@@ -122,7 +130,6 @@ def admin():
                     config[key] = json.loads(request.form[key])
                 except ValueError:
                     config[key] = request.form[key]
-        save_constants(config)
 
     return render_template('admin.html', config=config)
 
@@ -149,8 +156,8 @@ def restart():
 
 def run_indexer():
     logger.info("Running indexer...")
-    indexer.indexer(settings['DIRECTORY'], settings['INDEX'])
-    
+    indexer.indexer(settings['DIRECTORY'])  # Ensure this interacts with the database correctly
+
     next_run = datetime.now() + timedelta(hours=24)
     delay = (next_run - datetime.now()).total_seconds()
     logger.info(f"Scheduling indexer for the next run in 24 hours")
@@ -249,16 +256,7 @@ def md5_search(md5_hash):
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
     download_url = f"/file/{md5_hash}"
-    return redirect(download_url)
-
-@app.route('/file/<md5_hash>', methods=['GET'])
-def serve_file(md5_hash):
-    # Implement file serving logic based on md5_hash
-    file_path = f"{settings['DIRECTORY']}/{md5_hash}.file_extension"  # Replace with actual logic
-    if not os.path.exists(file_path):
-        return abort(404)
-
-    return send_file(file_path)
+    return send_file(download_url)
 
 if __name__ == '__main__':
     initialize_settings()
