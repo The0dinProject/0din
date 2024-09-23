@@ -6,7 +6,16 @@ Decentralized Federated File Hosting Platform
 0din is an early alpha-stage decentralized federated file hosting platform designed to offer a scalable, user-friendly solution for sharing and accessing files across a distributed network. It merges the benefits of decentralization and federation to create a dynamic and resilient file-sharing ecosystem.
 
 ## Installation
-To run 0din on your machine, follow these steps:
+
+you have 2 installation options, either manual setup, or using docker, docker is the recommended way
+
+### Installing using docker
+
+just use this image, as of now, it is the only official docker image for 0din, anything else is not official
+
+https://github.com/PastaGringo/0din-docker
+
+### Manual Installation
 
 1. **Clone the repository**:
    ```bash
