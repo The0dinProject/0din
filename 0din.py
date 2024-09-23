@@ -1,7 +1,18 @@
-import psycopg2
 import os
-import requests
+import json
+import time
 import logging
+import secrets
+import requests
+import threading
+import sched
+import search
+import peer_discovery
+import indexer
+import psycopg2
+from datetime import datetime, timedelta
+from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
 from colorlog import ColoredFormatter
 
 # Logging configuration
@@ -17,131 +28,273 @@ formatter = ColoredFormatter(
         'CRITICAL': 'bold_red',
     }
 )
-
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
+# Flask application
+app = Flask(__name__)
+scheduler = sched.scheduler(time.time, time.sleep)
+app.secret_key = secrets.token_hex(16)
+
+# Default configuration
+DEFAULT_CONFIG = {
+    'NODE_ID': os.getenv('NODE_ID', '127.0.0.1:5000'),
+    'LAST_EXECUTION_FILE': 'last_execution.txt',
+    'INDEX_FILES_TIME': 1,
+    'PEER_DISCOVER_INTERVAL': 1,
+    'DIRECTORY': '/the/directory/to/be/shared',
+    'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
+    'HEARTBEAT_INTERVAL': 10,
+}
+
+# Global settings dictionary
+settings = {
+    'known_nodes': set(os.getenv('KNOWN_NODES', '').split(', ')),
+    'announced_nodes': set(),
+}
+
+def setup_admin_credentials(username, password):
+    hashed_password = generate_password_hash(password)
+    with open('credentials.json', 'w') as f:
+        json.dump({'username': username, 'password': hashed_password}, f)
+
 def get_db_connection():
-    """Establish a connection to the PostgreSQL database."""
-    try:
-        conn = psycopg2.connect(
-            dbname=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            host=os.getenv('DB_HOST', 'localhost'),
-            port=os.getenv('DB_PORT', '5432')
-        )
-        logger.info("Database connection established successfully.")
-        return conn
-    except psycopg2.Error as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
+    return psycopg2.connect(
+        dbname=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        host=os.getenv('DB_HOST', 'localhost'),
+        port=os.getenv('DB_PORT', '5432')
+    )
 
-def local_search(search_term, node_id, search_type='name', category=None):
-    """
-    Perform a local search in the PostgreSQL database for a specific search term.
+def initialize_settings():
+    if not os.path.exists('settings.json'):
+        with open('settings.json', 'w') as f:
+            json.dump(DEFAULT_CONFIG, f, indent=4)
+    with open('settings.json') as f:
+        config = json.load(f)
+    settings.update({key: config.get(key, value) for key, value in DEFAULT_CONFIG.items()})
 
-    Args:
-        search_term (str): Term to search for, either in file names (partial) or md5_hash (exact match).
-        node_id (str): The ID of the current node performing the search.
-        search_type (str): The type of search to perform ('name' for file name, 'md5' for md5_hash).
-        category (str, optional): Category to filter the search results by.
+def load_credentials():
+    if os.path.exists('credentials.json'):
+        with open('credentials.json') as f:
+            return json.load(f)
+    return {'username': 'admin', 'password': generate_password_hash('admin')}
 
-    Returns:
-        list: A list of dictionaries matching the search term and category (if specified), with 'node_id' included.
-    """
-    matches = []
-    conn = get_db_connection()
-    cursor = conn.cursor()
+@app.before_request
+def check_setup():
+    if not os.path.exists('credentials.json'):
+        if request.endpoint not in ['setup', 'login']:
+            return redirect(url_for('setup'))
 
-    try:
-        logger.debug(f"Starting local search: search_term={search_term}, search_type={search_type}, category={category}")
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    if os.path.exists('credentials.json'):
+        return redirect(url_for('login'))
 
-        # Create the SQL query
-        query = "SELECT file_name, path, md5_hash, file_size, category FROM files WHERE"
-        conditions = []
-        if category:
-            conditions.append(" category = %s")
-        if search_type == 'name':
-            conditions.append(" LOWER(file_name) LIKE LOWER(%s)")
-            search_term = f"%{search_term}%"
-        elif search_type == 'md5':
-            conditions.append(" md5_hash = %s")
-
-        query += " AND".join(conditions)
-
-        # Execute the query
-        cursor.execute(query, tuple([category, search_term] if category else [search_term]))
-        results = cursor.fetchall()
-
-        for row in results:
-            match = {
-                'file_name': row[0],
-                'path': row[1],
-                'md5_hash': row[2],
-                'file_size': row[3],
-                'category': row[4],
-                'node_id': node_id
-            }
-            matches.append(match)
-
-        logger.info(f"Local search completed. Found {len(matches)} matches.")
-    except Exception as e:
-        logger.error(f"Error during local search: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-    return matches
-
-def global_search(search_term, known_nodes, current_node_id, search_type='name', category=None):
-    """
-    Perform a global search across all known nodes and the local index in the PostgreSQL database.
-
-    Args:
-        search_term (str): Term to search for in file names or md5_hash.
-        known_nodes (list): List of known nodes to query for remote searches.
-        current_node_id (str): The ID of the current node performing the search.
-        search_type (str): The type of search to perform ('name' for file name, 'md5' for md5_hash).
-        category (str, optional): Category to filter the search results by.
-
-    Returns:
-        list: A combined list of dictionaries from both local and remote searches.
-    """
-    global_matches = []
-
-    logger.debug(f"Initiating global search for term '{search_term}' on node '{current_node_id}'")
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        setup_admin_credentials(username, password)
+        return redirect(url_for('login'))
     
-    # Perform local search
-    local_matches = local_search(search_term, current_node_id, search_type, category)
-    global_matches.extend(local_matches)
+    return render_template('setup.html')
 
-    # Perform remote searches
-    for node_id in known_nodes:
-        if node_id == current_node_id:
-            continue  # Skip searching on the current node itself
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        credentials = load_credentials()
+        if username == credentials['username'] and check_password_hash(credentials['password'], password):
+            session['logged_in'] = True
+            return redirect(url_for('admin'))
+        else:
+            return 'Invalid credentials', 401
+    return render_template('login.html')
 
-        try:
-            search_url = f"http://{node_id}/localsearch"
-            logger.debug(f"Sending remote search request to {search_url}")
-            
-            response = requests.post(search_url, json={
-                "search_term": search_term,
-                "search_type": search_type,
-                "category": category
-            })
-            response.raise_for_status()
-            remote_matches = response.json()
-            for match in remote_matches:
-                match['node_id'] = node_id
-            global_matches.extend(remote_matches)
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
 
-            logger.info(f"Received {len(remote_matches)} matches from node {node_id}")
-        except requests.RequestException as e:
-            logger.error(f"Error during global search on node {node_id}: {e}")
+    config = settings.copy()
 
-    logger.info(f"Global search completed. Total matches found: {len(global_matches)}")
-    return global_matches
+    if request.method == 'POST':
+        for key in config:
+            if key in request.form:
+                try:
+                    config[key] = json.loads(request.form[key])
+                except ValueError:
+                    config[key] = request.form[key]
+
+    return render_template('admin.html', config=config)
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+    return 'Server shutting down...'
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+    os.execv(__file__, ['python'] + [__file__])
+    return 'Server restarting...'
+
+def run_indexer():
+    logger.info("Running indexer...")
+    indexer.indexer(settings['DIRECTORY'])  # Ensure this interacts with the database correctly
+
+    next_run = datetime.now() + timedelta(hours=24)
+    delay = (next_run - datetime.now()).total_seconds()
+    logger.info(f"Scheduling indexer for the next run in 24 hours")
+    scheduler.enter(delay, 1, run_indexer)
+
+def run_announcer():
+    logger.info("Running announcer...")
+    new_nodes_discovered = False
+    for node in list(settings['known_nodes']):
+        if node not in settings['announced_nodes']:
+            logger.info(f"Announcing to {node}...")
+            new_nodes = peer_discovery.announce(f"http://{node}/announce", settings['NODE_ID'], settings['known_nodes'])
+            settings['announced_nodes'].add(node)
+            if new_nodes:
+                new_nodes_discovered = True
+                settings['known_nodes'].update(new_nodes)
+    
+    logger.info(f"Known nodes: {settings['known_nodes']}")
+    logger.info(f"Announced nodes: {settings['announced_nodes']}")
+    
+    if not new_nodes_discovered:
+        logger.info("No new nodes discovered, stopping announcer.")
+    
+    delay = settings['PEER_DISCOVER_INTERVAL'] * 3600
+    logger.info(f"Scheduling announcer for the next run in {settings['PEER_DISCOVER_INTERVAL']} hours")
+    scheduler.enter(delay, 1, run_announcer)
+
+def run_heartbeat_checker():
+    logger.info("Running heartbeat checker...")
+    nodes_to_remove = set()
+    for node in list(settings['known_nodes']):
+        result = peer_discovery.heartbeat_ping(f"http://{node}/heartbeat")
+        if result == 1:
+            logger.info(f"Node {node} is unreachable or invalid, removing from known_nodes.")
+            nodes_to_remove.add(node)
+        elif result == 2:
+            logger.error("No internet connection, cannot perform heartbeat check.")
+            break
+    
+    settings['known_nodes'].difference_update(nodes_to_remove)
+    logger.info(f"Updated known nodes: {settings['known_nodes']}")
+    
+    delay = settings['HEARTBEAT_INTERVAL'] * 60
+    logger.info(f"Scheduling heartbeat checker for the next run in {settings['HEARTBEAT_INTERVAL']} minutes")
+    scheduler.enter(delay, 1, run_heartbeat_checker)
+
+def schedule_tasks():
+    now = datetime.now()
+    next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=settings['INDEX_FILES_TIME'])
+    if now > next_index_run:
+        next_index_run += timedelta(days=1)
+    
+    delay_index = (next_index_run - now).total_seconds()
+    logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
+    scheduler.enter(delay_index, 1, run_indexer)
+    
+    response = requests.get(settings['URL'])
+    if response.status_code == 200:
+        data = json.loads(response.text)
+        settings['known_nodes'].update(data)
+    else:
+        logger.error(f"Failed to download node list, status code {response.status_code}")
+        return None
+
+    run_announcer()
+    scheduler.enter(0, 1, run_announcer)
+    run_heartbeat_checker()
+    scheduler.enter(0, 1, run_heartbeat_checker)
+
+def run_scheduler():
+    while True:
+        scheduler.run(blocking=False)
+        time.sleep(1)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/global_search', methods=['POST'])
+def global_search_route():
+    query = request.form.get('query')
+    category = request.form.get('category', None)
+    if category == 'all':
+        category = None
+    
+    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    
+    return render_template('results.html', query=query, category=category, results=results)
+
+@app.route('/json/global_search', methods=['POST'])
+def global_search_json():
+    query = request.form.get('query')
+    category = request.form.get('category', None)
+    if category == 'all':
+        category = None
+    
+    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    
+    return jsonify(results)
+
+@app.route('/localsearch', methods=['POST'])
+def localsearch_endpoint():
+    data = request.get_json()
+
+    search_term = data.get('search_term')
+    search_type = data.get('search_type', 'name')
+    category = data.get('category', None)
+
+    logger.debug(f"Received request for local search: search_term={search_term}, search_type={search_type}, category={category}")
+
+    matches = search.local_search(search_term, os.getenv('NODE_ID'), search_type, category)
+
+    return jsonify(matches), 200
+
+@app.route('/md5_search/<md5_hash>')
+def md5_search(md5_hash):
+    results = search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    
+    return render_template('md5_results.html', md5_hash=md5_hash, results=results)
+
+@app.route('/json/md5_search/<md5_hash>')
+def md5_search_json(md5_hash):
+    return search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    
+@app.route('/download/<md5_hash>')
+def download_file(md5_hash):
+    download_url = f"/file/{md5_hash}"
+    return send_file(download_url)
+
+
+@app.route('/json/nodes')
+def nodes():
+    global settings
+    return jsonify(list(settings["known_nodes"]))
+
+if __name__ == '__main__':
+    initialize_settings()
+    threading.Thread(target=run_scheduler, daemon=True).start()
+    app.run(host='0.0.0.0', port=5000)
+

@@ -1,16 +1,44 @@
 import psycopg2
 import os
 import requests
+import logging
+from colorlog import ColoredFormatter
+
+# Logging configuration
+log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+formatter = ColoredFormatter(
+    "%(asctime)s - %(name)s - %(log_color)s%(levelname)s%(reset)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    log_colors={
+        'DEBUG': 'cyan',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red',
+    }
+)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(console_handler)
 
 def get_db_connection():
     """Establish a connection to the PostgreSQL database."""
-    return psycopg2.connect(
-        dbname=os.getenv('DB_NAME'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        host=os.getenv('DB_HOST', 'localhost'),
-        port=os.getenv('DB_PORT', '5432')
-    )
+    try:
+        conn = psycopg2.connect(
+            dbname=os.getenv('DB_NAME'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=os.getenv('DB_PORT', '5432')
+        )
+        logger.info("Database connection established successfully.")
+        return conn
+    except psycopg2.Error as e:
+        logger.error(f"Database connection failed: {e}")
+        raise
 
 def local_search(search_term, node_id, search_type='name', category=None):
     """
@@ -30,6 +58,8 @@ def local_search(search_term, node_id, search_type='name', category=None):
     cursor = conn.cursor()
 
     try:
+        logger.debug(f"Starting local search: search_term={search_term}, search_type={search_type}, category={category}")
+
         # Create the SQL query
         query = "SELECT file_name, path, md5_hash, file_size, category FROM files WHERE"
         conditions = []
@@ -58,8 +88,9 @@ def local_search(search_term, node_id, search_type='name', category=None):
             }
             matches.append(match)
 
+        logger.info(f"Local search completed. Found {len(matches)} matches.")
     except Exception as e:
-        print(f"Error during local search: {e}")
+        logger.error(f"Error during local search: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -82,6 +113,8 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
     """
     global_matches = []
 
+    logger.debug(f"Initiating global search for term '{search_term}' on node '{current_node_id}'")
+    
     # Perform local search
     local_matches = local_search(search_term, current_node_id, search_type, category)
     global_matches.extend(local_matches)
@@ -93,6 +126,8 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
 
         try:
             search_url = f"http://{node_id}/localsearch"
+            logger.debug(f"Sending remote search request to {search_url}")
+            
             response = requests.post(search_url, json={
                 "search_term": search_term,
                 "search_type": search_type,
@@ -103,8 +138,10 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
             for match in remote_matches:
                 match['node_id'] = node_id
             global_matches.extend(remote_matches)
+
+            logger.info(f"Received {len(remote_matches)} matches from node {node_id}")
         except requests.RequestException as e:
-            print(f"Error during global search on node {node_id}: {e}")
+            logger.error(f"Error during global search on node {node_id}: {e}")
 
+    logger.info(f"Global search completed. Total matches found: {len(global_matches)}")
     return global_matches
-
