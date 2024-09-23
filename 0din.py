@@ -247,6 +247,17 @@ def global_search_route():
     
     return render_template('results.html', query=query, category=category, results=results)
 
+@app.route('/json/global_search', methods=['POST'])
+def global_search_json():
+    query = request.form.get('query')
+    category = request.form.get('category', None)
+    if category == 'all':
+        category = None
+    
+    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    
+    return jsonify(results)
+
 @app.route('/localsearch', methods=['POST'])
 def localsearch_endpoint():
     data = request.get_json()
@@ -267,6 +278,10 @@ def md5_search(md5_hash):
     
     return render_template('md5_results.html', md5_hash=md5_hash, results=results)
 
+@app.route('/json/md5_search/<md5_hash>')
+def md5_search_json(md5_hash):
+    return search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
     download_url = f"/file/{md5_hash}"
