@@ -261,8 +261,8 @@ def download_file(md5_hash):
 
 @app.route('/json/nodes')
 def nodes():
-    global known_nodes
-    return jsonify(list(known_nodes))
+    global settings
+    return jsonify(list(settings["known_nodes"]))
 
 if __name__ == '__main__':
     initialize_settings()
