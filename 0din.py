@@ -284,9 +284,26 @@ def md5_search_json(md5_hash):
     
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
-    download_url = f"/file/{md5_hash}"
-    return send_file(download_url)
-
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        select_query = """
+        SELECT path FROM files WHERE md5_hash = %s;
+        """
+        cursor.execute(select_query, (md5_hash,))
+        result = cursor.fetchone()
+        
+        if result:
+            path = result[0]
+            
+            return send_file(path)
+        else:
+            abort(404, description="File not found")
+    
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/json/nodes')
 def nodes():
