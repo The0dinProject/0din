@@ -243,9 +243,23 @@ def global_search_route():
     if category == 'all':
         category = None
     
-    results = search.global_search(settings['INDEX'], query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], "name", category)
     
     return render_template('results.html', query=query, category=category, results=results)
+
+@app.route('/localsearch', methods=['POST'])
+def localsearch_endpoint():
+    data = request.get_json()
+
+    search_term = data.get('search_term')
+    search_type = data.get('search_type', 'name')
+    category = data.get('category', None)
+
+    logger.debug(f"Received request for local search: search_term={search_term}, search_type={search_type}, category={category}")
+
+    matches = search.local_search(search_term, os.getenv('NODE_ID'), search_type, category)
+
+    return jsonify(matches), 200
 
 @app.route('/md5_search/<md5_hash>')
 def md5_search(md5_hash):
