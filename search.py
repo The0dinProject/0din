@@ -99,23 +99,10 @@ def local_search(search_term, node_id, search_type='name', category=None):
     return matches
 
 def global_search(search_term, known_nodes, current_node_id, search_type='name', category=None):
-    """
-    Perform a global search across all known nodes and the local index in the PostgreSQL database.
-
-    Args:
-        search_term (str): Term to search for in file names or md5_hash.
-        known_nodes (list): List of known nodes to query for remote searches.
-        current_node_id (str): The ID of the current node performing the search.
-        search_type (str): The type of search to perform ('name' for file name, 'md5' for md5_hash).
-        category (str, optional): Category to filter the search results by.
-
-    Returns:
-        list: A combined list of dictionaries from both local and remote searches.
-    """
     global_matches = []
 
     logger.debug(f"Initiating global search for term '{search_term}' on node '{current_node_id}'")
-    
+
     # Perform local search
     local_matches = local_search(search_term, current_node_id, search_type, category)
     global_matches.extend(local_matches)
@@ -130,8 +117,9 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
             search_url = f"http://{node_id}/localsearch"
             logger.debug(f"Preparing remote search request for {search_url}")
             
+            # Capture node_id and search_url in the lambda
             futures.append(executor.submit(
-                lambda url=node_id: requests.post(url, json={
+                lambda url=search_url: requests.post(url, json={
                     "search_term": search_term,
                     "search_type": search_type,
                     "category": category
@@ -144,12 +132,12 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
                 response.raise_for_status()
                 remote_matches = response.json()
                 for match in remote_matches:
-                    match['node_id'] = node_id
+                    match['node_id'] = future.args[0]  # Capture the correct node_id
                 global_matches.extend(remote_matches)
 
-                logger.info(f"Received {len(remote_matches)} matches from node {node_id}")
+                logger.info(f"Received {len(remote_matches)} matches from node {future.args[0]}")
             except requests.RequestException as e:
-                logger.error(f"Error during global search on node {node_id}: {e}")
+                logger.error(f"Error during global search on node {future.args[0]}: {e}")
 
     logger.info(f"Global search completed. Total matches found: {len(global_matches)}")
     return global_matches
