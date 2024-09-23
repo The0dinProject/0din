@@ -274,13 +274,13 @@ def localsearch_endpoint():
 
 @app.route('/md5_search/<md5_hash>')
 def md5_search(md5_hash):
-    results = search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    results = search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
     
     return render_template('md5_results.html', md5_hash=md5_hash, results=results)
 
 @app.route('/json/md5_search/<md5_hash>')
 def md5_search_json(md5_hash):
-    return search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    return search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
     
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
