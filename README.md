@@ -116,13 +116,11 @@ Network Expansion: As more users establish 0din nodes, the network grows, increa
 ## Roadmap
 ### Minor Features
 
-CSS and Multiple Themes: Implementation of customizable CSS and multiple themes to enhance user interface aesthetics.
-
 Wiki and Usage Documentation: Comprehensive wiki and usage documents to assist users in setting up and utilizing 0din effectively.
 
-### Major Features
+more controls on the admin panel: like triggering indexing for example, and progress bars for currently running tasks
 
-Admin Panel: Development of a web-based admin panel for easier management and configuration of 0din nodes.
+### Major Features
 
 Proxying Nodes: Support for proxying one node over another, which is useful for nodes that cannot directly port forward, allowing for greater flexibility in network setup.
 
