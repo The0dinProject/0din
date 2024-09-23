@@ -279,6 +279,13 @@ def heartbeat():
         return redirect(url_for('login'))
     return 'Heartbeat received', 200
 
+
+@app.route('/json/nodes')
+def nodes():
+    global known_nodes
+    
+    return jsonify(list(known_nodes))
+
 if __name__ == '__main__':
     initialize_settings()
     schedule_tasks()
