@@ -1,6 +1,6 @@
 import os
 import hashlib
-import json
+import psycopg2
 import re
 
 def _calculate_md5(file_path):
@@ -57,7 +57,23 @@ def _should_exclude(file_path, exclude_patterns):
             return True
     return False
 
-def _index_directory(directory, exclude_patterns):
+def _create_database(connection):
+    """Create the indexed_files table if it doesn't exist."""
+    with connection.cursor() as cursor:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS indexed_files (
+            id SERIAL PRIMARY KEY,
+            file_name VARCHAR(255),
+            path TEXT,
+            md5_hash VARCHAR(32) UNIQUE,
+            file_size BIGINT,
+            category VARCHAR(100),
+            date_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        connection.commit()
+
+def _index_directory(directory, exclude_patterns, connection):
     """Index the files in the given directory and its subdirectories."""
     file_index = []
 
@@ -76,43 +92,68 @@ def _index_directory(directory, exclude_patterns):
             file_size = os.path.getsize(file_path)
             file_extension = os.path.splitext(file_name)[1]
 
-            # Calculate the MD5 hash of the file
+            # Check if the file's MD5 hash already exists in the database
             file_hash = _calculate_md5(file_path)
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM indexed_files WHERE md5_hash = %s;", (file_hash,))
+                existing_file = cursor.fetchone()
+
+            if existing_file:
+                print(f"File already indexed: {file_name} (MD5: {file_hash})")
+                continue  # Skip recalculation if the hash exists
 
             # Detect the file category
             file_category = _detect_category(file_path, file_extension)
 
-            # Create the file entry
-            file_entry = {
+            # Insert the new file entry into the database
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                INSERT INTO indexed_files (file_name, path, md5_hash, file_size, category)
+                VALUES (%s, %s, %s, %s, %s);
+                """, (file_name, file_path, file_hash, file_size, file_category))
+                connection.commit()
+
+            # Add to the index
+            file_index.append({
                 "file_name": file_name,
                 "path": file_path,
                 "md5_hash": file_hash,
                 "file_size": file_size,
                 "category": file_category,
-            }
-
-            # Add to the index
-            file_index.append(file_entry)
+            })
 
     return file_index
 
-def indexer(directory, output_path):
+def indexer(directory):
     """
-    Index the files in the given directory, exclude files based on .exclude_patterns, 
-    and write the index to the specified output path.
+    Index the files in the given directory, exclude files based on .exclude_patterns,
+    and store the index in a PostgreSQL database.
     
     Args:
         directory (str): The directory to index.
-        output_path (str): The path where the index.json will be written.
     """
+    connection = psycopg2.connect(
+        dbname=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        host=os.getenv('DB_HOST', 'localhost'),
+        port=os.getenv('DB_PORT', '5432')
+        )
+
+    # Create the database table if it doesn't exist
+    _create_database(connection)
+
     # Load exclusion patterns from the parent directory
     exclude_patterns = _load_exclusion_patterns(directory)
 
     # Index the directory
-    file_index = _index_directory(directory, exclude_patterns)
+    file_index = _index_directory(directory, exclude_patterns, connection)
 
-    # Write the index to the output path
-    with open(output_path, "w") as f:
-        json.dump(file_index, f, indent=4)
+    print(f"Indexing complete. {len(file_index)} files indexed.")
 
-    print(f"Indexing complete. Index written to {output_path}.")
+    # Close the database connection
+    connection.close()
+
+# Example usage
+# indexer("/path/to/directory")
+

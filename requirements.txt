@@ -1,3 +1,4 @@
 flask
 colorlog
 requests
+psycopg2-binary

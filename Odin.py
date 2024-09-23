@@ -9,6 +9,7 @@ import sched
 import search
 import peer_discovery
 import indexer
+import psycopg2
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -33,10 +34,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
-# Global variables
-known_nodes = set()
-announced_nodes = set()
-
 # Flask application
 app = Flask(__name__)
 scheduler = sched.scheduler(time.time, time.sleep)
@@ -44,14 +41,19 @@ app.secret_key = secrets.token_hex(16)
 
 # Default configuration
 DEFAULT_CONFIG = {
-    'INDEX': '/path/to/index.json',
-    'NODE_ID': '127.0.0.1:5000',
+    'NODE_ID': os.getenv('NODE_ID', '127.0.0.1:5000'),
     'LAST_EXECUTION_FILE': 'last_execution.txt',
     'INDEX_FILES_TIME': 1,
     'PEER_DISCOVER_INTERVAL': 1,
     'DIRECTORY': '/the/directory/to/be/shared',
     'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
-    'HEARTBEAT_INTERVAL': 10
+    'HEARTBEAT_INTERVAL': 10,
+}
+
+# Global settings dictionary
+settings = {
+    'known_nodes': set(os.getenv('KNOWN_NODES', '').split(', ')),
+    'announced_nodes': set(),
 }
 
 def setup_admin_credentials(username, password):
@@ -59,24 +61,22 @@ def setup_admin_credentials(username, password):
     with open('credentials.json', 'w') as f:
         json.dump({'username': username, 'password': hashed_password}, f)
 
+def get_db_connection():
+    return psycopg2.connect(
+        dbname=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        host=os.getenv('DB_HOST', 'localhost'),
+        port=os.getenv('DB_PORT', '5432')
+    )
+
 def initialize_settings():
     if not os.path.exists('settings.json'):
         with open('settings.json', 'w') as f:
             json.dump(DEFAULT_CONFIG, f, indent=4)
     with open('settings.json') as f:
         config = json.load(f)
-    for key, value in DEFAULT_CONFIG.items():
-        globals()[key] = config.get(key, value)
-
-def load_constants():
-    if os.path.exists('settings.json'):
-        with open('settings.json') as f:
-            return json.load(f)
-    return DEFAULT_CONFIG.copy()
-
-def save_constants(config):
-    with open('settings.json', 'w') as f:
-        json.dump(config, f, indent=4)
+    settings.update({key: config.get(key, value) for key, value in DEFAULT_CONFIG.items()})
 
 def load_credentials():
     if os.path.exists('credentials.json'):
@@ -121,7 +121,7 @@ def admin():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
 
-    config = load_constants()
+    config = settings.copy()
 
     if request.method == 'POST':
         for key in config:
@@ -130,7 +130,6 @@ def admin():
                     config[key] = json.loads(request.form[key])
                 except ValueError:
                     config[key] = request.form[key]
-        save_constants(config)
 
     return render_template('admin.html', config=config)
 
@@ -157,41 +156,39 @@ def restart():
 
 def run_indexer():
     logger.info("Running indexer...")
-    indexer.indexer(DIRECTORY, INDEX)
-    
+    indexer.indexer(settings['DIRECTORY'])  # Ensure this interacts with the database correctly
+
     next_run = datetime.now() + timedelta(hours=24)
     delay = (next_run - datetime.now()).total_seconds()
     logger.info(f"Scheduling indexer for the next run in 24 hours")
     scheduler.enter(delay, 1, run_indexer)
 
 def run_announcer():
-    global known_nodes, announced_nodes
     logger.info("Running announcer...")
     new_nodes_discovered = False
-    for node in list(known_nodes):
-        if node not in announced_nodes:
+    for node in list(settings['known_nodes']):
+        if node not in settings['announced_nodes']:
             logger.info(f"Announcing to {node}...")
-            new_nodes = peer_discovery.announce(f"http://{node}/announce", NODE_ID, known_nodes)
-            announced_nodes.add(node)
+            new_nodes = peer_discovery.announce(f"http://{node}/announce", settings['NODE_ID'], settings['known_nodes'])
+            settings['announced_nodes'].add(node)
             if new_nodes:
                 new_nodes_discovered = True
-                known_nodes.update(new_nodes)
+                settings['known_nodes'].update(new_nodes)
     
-    logger.info(f"Known nodes: {known_nodes}")
-    logger.info(f"Announced nodes: {announced_nodes}")
+    logger.info(f"Known nodes: {settings['known_nodes']}")
+    logger.info(f"Announced nodes: {settings['announced_nodes']}")
     
     if not new_nodes_discovered:
         logger.info("No new nodes discovered, stopping announcer.")
     
-    delay = PEER_DISCOVER_INTERVAL * 3600
-    logger.info(f"Scheduling announcer for the next run in {PEER_DISCOVER_INTERVAL} hours")
+    delay = settings['PEER_DISCOVER_INTERVAL'] * 3600
+    logger.info(f"Scheduling announcer for the next run in {settings['PEER_DISCOVER_INTERVAL']} hours")
     scheduler.enter(delay, 1, run_announcer)
 
 def run_heartbeat_checker():
-    global known_nodes
     logger.info("Running heartbeat checker...")
     nodes_to_remove = set()
-    for node in list(known_nodes):
+    for node in list(settings['known_nodes']):
         result = peer_discovery.heartbeat_ping(f"http://{node}/heartbeat")
         if result == 1:
             logger.info(f"Node {node} is unreachable or invalid, removing from known_nodes.")
@@ -200,16 +197,16 @@ def run_heartbeat_checker():
             logger.error("No internet connection, cannot perform heartbeat check.")
             break
     
-    known_nodes.difference_update(nodes_to_remove)
-    logger.info(f"Updated known nodes: {known_nodes}")
+    settings['known_nodes'].difference_update(nodes_to_remove)
+    logger.info(f"Updated known nodes: {settings['known_nodes']}")
     
-    delay = HEARTBEAT_INTERVAL * 60
-    logger.info(f"Scheduling heartbeat checker for the next run in {HEARTBEAT_INTERVAL} minutes")
+    delay = settings['HEARTBEAT_INTERVAL'] * 60
+    logger.info(f"Scheduling heartbeat checker for the next run in {settings['HEARTBEAT_INTERVAL']} minutes")
     scheduler.enter(delay, 1, run_heartbeat_checker)
 
 def schedule_tasks():
     now = datetime.now()
-    next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=INDEX_FILES_TIME)
+    next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=settings['INDEX_FILES_TIME'])
     if now > next_index_run:
         next_index_run += timedelta(days=1)
     
@@ -217,10 +214,10 @@ def schedule_tasks():
     logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
     scheduler.enter(delay_index, 1, run_indexer)
     
-    response = requests.get(URL)
+    response = requests.get(settings['URL'])
     if response.status_code == 200:
         data = json.loads(response.text)
-        known_nodes.update(data)
+        settings['known_nodes'].update(data)
     else:
         logger.error(f"Failed to download node list, status code {response.status_code}")
         return None
@@ -246,38 +243,20 @@ def global_search_route():
     if category == 'all':
         category = None
     
-    results = search.global_search(INDEX, query, known_nodes, NODE_ID, "name", category)
+    results = search.global_search(settings['INDEX'], query, settings['known_nodes'], settings['NODE_ID'], "name", category)
     
     return render_template('results.html', query=query, category=category, results=results)
 
 @app.route('/md5_search/<md5_hash>')
 def md5_search(md5_hash):
-    results = search.global_search(INDEX, md5_hash, known_nodes, NODE_ID, "md5")
+    results = search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
     
     return render_template('md5_results.html', md5_hash=md5_hash, results=results)
 
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
     download_url = f"/file/{md5_hash}"
-    return redirect(download_url)
-
-@app.route('/file/<md5_hash>')
-def serve_file(md5_hash):
-    matches = search.local_search(INDEX, md5_hash, NODE_ID, 'md5')
-    if not matches:
-        abort(404)
-    
-    file_path = matches[0].get('file_path')
-    if os.path.exists(file_path):
-        return send_file(file_path, as_attachment=True)
-    
-    abort(404)
-
-@app.route('/heartbeat', methods=['POST'])
-def heartbeat():
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    return 'Heartbeat received', 200
+    return send_file(download_url)
 
 
 @app.route('/json/nodes')
@@ -288,8 +267,6 @@ def nodes():
 
 if __name__ == '__main__':
     initialize_settings()
-    schedule_tasks()
-    scheduler_thread = threading.Thread(target=run_scheduler)
-    scheduler_thread.start()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    threading.Thread(target=run_scheduler, daemon=True).start()
+    app.run(host='0.0.0.0', port=5000)
 
