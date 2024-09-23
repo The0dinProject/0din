@@ -258,6 +258,13 @@ def download_file(md5_hash):
     download_url = f"/file/{md5_hash}"
     return send_file(download_url)
 
+
+@app.route('/json/nodes')
+def nodes():
+    global known_nodes
+    
+    return jsonify(list(known_nodes))
+
 if __name__ == '__main__':
     initialize_settings()
     threading.Thread(target=run_scheduler, daemon=True).start()

@@ -7,13 +7,15 @@ Decentralized Federated File Hosting Platform
 
 ## Installation
 
-you have 2 installation options, either manual setup, or using docker, docker is the recommended way
+You have 2 options for installation, either manually or with Docker, Docker is the recommended method.
 
 ### Installing using docker
 
-just use this image, as of now, it is the only official docker image for 0din, anything else is not official
+Just use this image, it is currently the only official Docker image for 0din, everything else is not official.
 
-https://github.com/PastaGringo/0din-docker
+```bash
+docker pull pastagringo/0din-docker
+```
 
 ### Manual Installation
 
