@@ -91,12 +91,12 @@ def _should_exclude(file_path, exclude_patterns):
     return False
 
 def _create_database(connection):
-    """Create the indexed_files table if it doesn't exist."""
+    """Create the files table if it doesn't exist."""
     logger.debug("Creating database table if not exists")
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS indexed_files (
+            CREATE TABLE IF NOT EXISTS files (
                 id SERIAL PRIMARY KEY,
                 file_name VARCHAR(255),
                 path TEXT,
@@ -138,7 +138,7 @@ def _index_directory(directory, exclude_patterns, connection):
                 continue
 
             with connection.cursor() as cursor:
-                cursor.execute("SELECT * FROM indexed_files WHERE md5_hash = %s;", (file_hash,))
+                cursor.execute("SELECT * FROM files WHERE md5_hash = %s;", (file_hash,))
                 existing_file = cursor.fetchone()
 
             if existing_file:
@@ -151,7 +151,7 @@ def _index_directory(directory, exclude_patterns, connection):
             # Insert the new file entry into the database
             with connection.cursor() as cursor:
                 cursor.execute("""
-                INSERT INTO indexed_files (file_name, path, md5_hash, file_size, category)
+                INSERT INTO files (file_name, path, md5_hash, file_size, category)
                 VALUES (%s, %s, %s, %s, %s);
                 """, (file_name, file_path, file_hash, file_size, file_category))
                 connection.commit()
