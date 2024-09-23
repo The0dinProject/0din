@@ -3,6 +3,7 @@ import os
 import requests
 import logging
 from colorlog import ColoredFormatter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Logging configuration
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -119,29 +120,36 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
     local_matches = local_search(search_term, current_node_id, search_type, category)
     global_matches.extend(local_matches)
 
-    # Perform remote searches
-    for node_id in known_nodes:
-        if node_id == current_node_id:
-            continue  # Skip searching on the current node itself
+    # Perform remote searches concurrently
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for node_id in known_nodes:
+            if node_id == current_node_id:
+                continue  # Skip searching on the current node itself
 
-        try:
             search_url = f"http://{node_id}/localsearch"
-            logger.debug(f"Sending remote search request to {search_url}")
+            logger.debug(f"Preparing remote search request for {search_url}")
             
-            response = requests.post(search_url, json={
-                "search_term": search_term,
-                "search_type": search_type,
-                "category": category
-            })
-            response.raise_for_status()
-            remote_matches = response.json()
-            for match in remote_matches:
-                match['node_id'] = node_id
-            global_matches.extend(remote_matches)
+            futures.append(executor.submit(
+                lambda url=node_id: requests.post(url, json={
+                    "search_term": search_term,
+                    "search_type": search_type,
+                    "category": category
+                })
+            ))
 
-            logger.info(f"Received {len(remote_matches)} matches from node {node_id}")
-        except requests.RequestException as e:
-            logger.error(f"Error during global search on node {node_id}: {e}")
+        for future in as_completed(futures):
+            try:
+                response = future.result()
+                response.raise_for_status()
+                remote_matches = response.json()
+                for match in remote_matches:
+                    match['node_id'] = node_id
+                global_matches.extend(remote_matches)
+
+                logger.info(f"Received {len(remote_matches)} matches from node {node_id}")
+            except requests.RequestException as e:
+                logger.error(f"Error during global search on node {node_id}: {e}")
 
     logger.info(f"Global search completed. Total matches found: {len(global_matches)}")
     return global_matches
