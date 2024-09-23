@@ -1,9 +1,29 @@
 import requests
 import time
+import logging
+import colorlog
+
+# Configure logging
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter(
+    '%(log_color)s%(asctime)s - %(levelname)s - %(message)s',
+    log_colors={
+        'DEBUG': 'cyan',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red',
+    }
+))
+
+logger = colorlog.getLogger(__name__)
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
 
 def _check_internet_connection(test_url="http://www.google.com", timeout=5):
     """
-    Check if there is an active internet connection by making a request to a reliable URL, INTERNAL FUNCTION
+    Check if there is an active internet connection by making a request to a reliable URL.
     
     Args:
         test_url (str): URL to test internet connectivity.
@@ -14,9 +34,12 @@ def _check_internet_connection(test_url="http://www.google.com", timeout=5):
     """
     try:
         response = requests.get(test_url, timeout=timeout)
+        logger.info(f"Internet connection check: {response.status_code == 200}")
         return response.status_code == 200
-    except requests.RequestException:
+    except requests.RequestException as e:
+        logger.error(f"Internet connection check failed: {e}")
         return False
+
 
 def announce(announce_url, node_id, known_nodes, max_retries=3, timeout=5):
     """
@@ -35,17 +58,21 @@ def announce(announce_url, node_id, known_nodes, max_retries=3, timeout=5):
     payload = {"node_id": node_id}
     for attempt in range(max_retries):
         try:
+            logger.debug(f"Announcing to {announce_url}, attempt {attempt + 1}")
             response = requests.post(announce_url, json=payload, timeout=timeout)
             response.raise_for_status()
             response_data = response.json()
             received_nodes = response_data.get("known_nodes", [])
             known_nodes.update(received_nodes)
-            return set(received_nodes)  # Return the list of known nodes received
+            logger.info(f"Announcement successful, known nodes received: {received_nodes}")
+            return set(received_nodes)
         except requests.RequestException as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
             time.sleep(2 ** attempt)
-    print(f"Failed to announce to {announce_url} after {max_retries} attempts")
+    
+    logger.error(f"Failed to announce to {announce_url} after {max_retries} attempts")
     return set()
+
 
 def handle_announcement(node_id, received_known_nodes, known_nodes, announced_nodes, response_url):
     """
@@ -63,19 +90,22 @@ def handle_announcement(node_id, received_known_nodes, known_nodes, announced_no
         set: Updated set of known nodes after processing the announcement.
     """
     if node_id not in announced_nodes:
+        logger.debug(f"Handling announcement from {node_id}")
         announced_nodes.add(node_id)
-        known_nodes.add(node_id)  # Add the node making the announcement
+        known_nodes.add(node_id)
         known_nodes.update(received_known_nodes)
-        
-        # Send back the updated list of known nodes
+        logger.info(f"Updated known nodes with {received_known_nodes}")
+
         payload = {"known_nodes": list(known_nodes)}
         try:
             response = requests.post(response_url, json=payload)
             response.raise_for_status()
+            logger.info(f"Successfully sent response to {response_url}")
         except requests.RequestException as e:
-            print(f"Failed to send response to {response_url}: {e}")
+            logger.error(f"Failed to send response to {response_url}: {e}")
 
     return known_nodes
+
 
 def heartbeat_ping(node_url, timeout=5):
     """
@@ -89,13 +119,19 @@ def heartbeat_ping(node_url, timeout=5):
         int: 0 if the heartbeat page is valid, 1 if it is invalid, 2 if there is no internet connection.
     """
     if not _check_internet_connection():
+        logger.warning("No internet connection available.")
         return 2
 
     try:
+        logger.debug(f"Pinging node at {node_url}")
         response = requests.get(node_url, timeout=timeout)
         if response.status_code == 200 and 'heartbeat' in response.text:
-            return 0  # Valid heartbeat page
+            logger.info(f"Heartbeat valid from {node_url}")
+            return 0
         else:
-            return 1  # Invalid or unreachable
-    except requests.RequestException:
-        return 1  # Node is unreachable or invalid
+            logger.warning(f"Invalid or unreachable node at {node_url}")
+            return 1
+    except requests.RequestException as e:
+        logger.error(f"Node {node_url} unreachable: {e}")
+        return 1
+
