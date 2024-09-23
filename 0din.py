@@ -65,18 +65,19 @@ settings = {
 
 def generate_self_signed_cert(cert_file='cert.pem', key_file='key.pem'):
     if not os.path.exists(cert_file) or not os.path.exists(key_file):
-        # Generate a private key
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
             backend=default_backend()
         )
 
-        # Generate a self-signed certificate
         subject = x509.Name([
-            x509.NameAttribute(x509.NameOID.COMMON_NAME, u'localhost'),
+            x509.NameAttribute(x509.NameOID.COMMON_NAME, os.getenv("NODE_ID", 'localhost')),
         ])
         issuer = subject
+
+        not_valid_before = datetime.utcnow()
+        not_valid_after = not_valid_before + timedelta(days=36500)
 
         certificate = (
             x509.CertificateBuilder()
@@ -84,9 +85,9 @@ def generate_self_signed_cert(cert_file='cert.pem', key_file='key.pem'):
             .issuer_name(issuer)
             .public_key(private_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=365))
-            .add_extension(x509.SubjectAlternativeName([x509.DNSName(u'localhost')]), critical=False)
+            .not_valid_before(not_valid_before)
+            .not_valid_after(not_valid_after)
+            .add_extension(x509.SubjectAlternativeName([x509.DNSName(os.getenv("NODE_ID", 'localhost'))]), critical=False)
             .sign(private_key, hashes.SHA256(), default_backend())
         )
 
