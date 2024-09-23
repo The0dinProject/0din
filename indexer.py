@@ -39,26 +39,32 @@ def _calculate_md5(file_path):
 def _detect_category(file_path, file_extension):
     """Detect the file's category based on its path or file extension."""
     logger.debug(f"Detecting category for {file_path}")
+
     categories = {
-        "movie": ["movie", "movies"],
-        "tv show": ["tv", "show", "shows", "series"],
-        "book": ["book", "books"],
-        "audiobook": ["audiobook", "audiobooks"],
+        "movie": ["movie", "movies", "film", "cinema", "flick"],
+        "tv show": ["tv", "show", "shows", "series", "episode", "season"],
+        "book": ["book", "books", "novel", "textbook", "literature"],
+        "audiobook": ["audiobook", "audiobooks", "audio book", "narration"],
+        "podcast": ["podcast", "podcasts", "episode", "broadcast"],
+        "music": ["music", "album", "track", "song"],
+        "image": ["image", "picture", "photo", "snapshot", "gallery"],
+        "ebook": ["ebook", "e-book", "electronic book", "kindle", "pdf"],
+        "compressed": ["zip", "archive", "compressed", "rar", "tar"],
     }
 
-    # First, check the path for keywords
     for category, keywords in categories.items():
         if any(keyword in file_path.lower() for keyword in keywords):
             logger.info(f"Category detected from path: {category}")
             return category
 
-    # Use file extension for categorization
     extension_categories = {
-        "audio": [".mp3", ".wav", ".flac"],
-        "video": [".mp4", ".avi", ".mkv", ".mov"],
-        "picture": [".jpg", ".jpeg", ".png", ".gif", ".bmp"],
-        "plaintext": [".txt", ".md", ".log"],
-        "document": [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"],
+        "audio": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a"],
+        "video": [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv"],
+        "image": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".svg"],
+        "plaintext": [".txt", ".md", ".log", ".csv", ".json"],
+        "document": [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt"],
+        "ebook": [".epub", ".mobi", ".azw"],
+        "compressed": [".zip", ".rar", ".tar", ".gz", ".7z"],
     }
 
     for category, extensions in extension_categories.items():
