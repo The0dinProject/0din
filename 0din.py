@@ -57,14 +57,11 @@ settings = {
 }
 
 def setup_admin_credentials(username, password):
-    logger.debug(f"Setting up admin credentials for username: {username}")
     hashed_password = generate_password_hash(password)
     with open('credentials.json', 'w') as f:
         json.dump({'username': username, 'password': hashed_password}, f)
-    logger.info(f"Admin credentials saved for user: {username}")
 
 def get_db_connection():
-    logger.debug("Getting database connection")
     return psycopg2.connect(
         dbname=os.getenv('DB_NAME'),
         user=os.getenv('DB_USER'),
@@ -74,70 +71,54 @@ def get_db_connection():
     )
 
 def initialize_settings():
-    logger.debug("Initializing settings")
     if not os.path.exists('settings.json'):
-        logger.info("Settings file not found. Creating a new one with default settings.")
         with open('settings.json', 'w') as f:
             json.dump(DEFAULT_CONFIG, f, indent=4)
-    
     with open('settings.json') as f:
         config = json.load(f)
     settings.update({key: config.get(key, value) for key, value in DEFAULT_CONFIG.items()})
-    logger.info("Settings initialized")
 
 def load_credentials():
-    logger.debug("Loading admin credentials")
     if os.path.exists('credentials.json'):
         with open('credentials.json') as f:
             return json.load(f)
-    logger.warning("No credentials found. Using default admin credentials.")
     return {'username': 'admin', 'password': generate_password_hash('admin')}
 
 @app.before_request
 def check_setup():
-    logger.debug("Checking if setup is required")
     if not os.path.exists('credentials.json'):
         if request.endpoint not in ['setup', 'login']:
-            logger.info("Redirecting to setup page")
             return redirect(url_for('setup'))
 
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
-    logger.debug("Setup route accessed")
     if os.path.exists('credentials.json'):
-        logger.info("Setup already completed, redirecting to login")
         return redirect(url_for('login'))
 
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         setup_admin_credentials(username, password)
-        logger.info("Setup completed, redirecting to login")
         return redirect(url_for('login'))
     
     return render_template('setup.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    logger.debug("Login route accessed")
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         credentials = load_credentials()
         if username == credentials['username'] and check_password_hash(credentials['password'], password):
             session['logged_in'] = True
-            logger.info(f"User {username} logged in successfully")
             return redirect(url_for('admin'))
         else:
-            logger.warning("Invalid login credentials")
             return 'Invalid credentials', 401
     return render_template('login.html')
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    logger.debug("Admin route accessed")
     if not session.get('logged_in'):
-        logger.info("User not logged in, redirecting to login")
         return redirect(url_for('login'))
 
     config = settings.copy()
@@ -149,39 +130,28 @@ def admin():
                     config[key] = json.loads(request.form[key])
                 except ValueError:
                     config[key] = request.form[key]
-        logger.info("Admin settings updated")
 
     return render_template('admin.html', config=config)
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
-    logger.debug("Shutdown route accessed")
     if not session.get('logged_in'):
-        logger.info("User not logged in, redirecting to login")
         return redirect(url_for('login'))
-    
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
-        logger.error("Server shutdown function not found")
         raise RuntimeError('Not running with the Werkzeug Server')
     func()
-    logger.info("Server shutting down...")
     return 'Server shutting down...'
 
 @app.route('/restart', methods=['POST'])
 def restart():
-    logger.debug("Restart route accessed")
     if not session.get('logged_in'):
-        logger.info("User not logged in, redirecting to login")
         return redirect(url_for('login'))
-    
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
-        logger.error("Server restart function not found")
         raise RuntimeError('Not running with the Werkzeug Server')
     func()
     os.execv(__file__, ['python'] + [__file__])
-    logger.info("Server restarting...")
     return 'Server restarting...'
 
 def run_indexer():
@@ -235,7 +205,6 @@ def run_heartbeat_checker():
     scheduler.enter(delay, 1, run_heartbeat_checker)
 
 def schedule_tasks():
-    logger.debug("Scheduling tasks")
     now = datetime.now()
     next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=settings['INDEX_FILES_TIME'])
     if now > next_index_run:
@@ -245,16 +214,58 @@ def schedule_tasks():
     logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
     scheduler.enter(delay_index, 1, run_indexer)
     
-    scheduler.enter(settings['PEER_DISCOVER_INTERVAL'] * 3600, 1, run_announcer)
-    scheduler.enter(settings['HEARTBEAT_INTERVAL'] * 60, 1, run_heartbeat_checker)
+    response = requests.get(settings['URL'])
+    if response.status_code == 200:
+        data = json.loads(response.text)
+        settings['known_nodes'].update(data)
+    else:
+        logger.error(f"Failed to download node list, status code {response.status_code}")
+        return None
 
-def run_server():
-    logger.debug("Running the server...")
-    app.run(host='0.0.0.0', port=5000)
+    run_announcer()
+    scheduler.enter(0, 1, run_announcer)
+    run_heartbeat_checker()
+    scheduler.enter(0, 1, run_heartbeat_checker)
 
-if __name__ == "__main__":
-    logger.debug("Initializing the application")
+def run_scheduler():
+    while True:
+        scheduler.run(blocking=False)
+        time.sleep(1)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/global_search', methods=['POST'])
+def global_search_route():
+    query = request.form.get('query')
+    category = request.form.get('category', None)
+    if category == 'all':
+        category = None
+    
+    results = search.global_search(settings['INDEX'], query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    
+    return render_template('results.html', query=query, category=category, results=results)
+
+@app.route('/md5_search/<md5_hash>')
+def md5_search(md5_hash):
+    results = search.global_search(settings['INDEX'], md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    
+    return render_template('md5_results.html', md5_hash=md5_hash, results=results)
+
+@app.route('/download/<md5_hash>')
+def download_file(md5_hash):
+    download_url = f"/file/{md5_hash}"
+    return send_file(download_url)
+
+
+@app.route('/json/nodes')
+def nodes():
+    global known_nodes
+    return jsonify(list(known_nodes))
+
+if __name__ == '__main__':
     initialize_settings()
-    schedule_tasks()
-    run_server()
+    threading.Thread(target=run_scheduler, daemon=True).start()
+    app.run(host='0.0.0.0', port=5000)
 
