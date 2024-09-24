@@ -100,9 +100,11 @@ def check_setup():
             url = request.url.replace("http://", "https://", 1)
             return redirect(url, code=301)
 
+    if request.path.startswith('/static') or request.endpoint in ['setup', 'login']:
+        return
+
     if not os.path.exists('credentials.json'):
-        if request.endpoint not in ['setup', 'login']:
-            return redirect(url_for('setup'))
+        return redirect(url_for('setup'))
 
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
