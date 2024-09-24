@@ -89,7 +89,7 @@ def check_setup():
     if not os.path.exists('credentials.json'):
         if request.endpoint not in ['setup', 'login']:
             return redirect(url_for('setup'))
-        if os.getenv("ENABLE_HTTPS") == "1" and not request.is_secure:
+        if os.getenv("ENABLE_HTTPS_REDIRECT") == "1" and not request.is_secure:
             url = request.url.replace("http://", "https://", 1)
             return redirect(url, code=301)
 
