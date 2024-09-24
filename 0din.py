@@ -86,9 +86,19 @@ def load_credentials():
 
 @app.before_request
 def check_setup():
-    if os.getenv("ENABLE_HTTPS_REDIRECT") == "1" and not request.is_secure:
-        url = request.url.replace("http://", "https://", 1)
-        return redirect(url, code=301)
+    ssl_enabled = os.getenv("ENABLE_SSL") == "true"
+    https_redirect_enabled = os.getenv("ENABLE_HTTPS_REDIRECT") == "true"
+
+    if ssl_enabled:
+        if not request.is_secure:
+            url = request.url.replace("http://", "https://", 1)
+            return redirect(url, code=301)
+        return
+
+    if https_redirect_enabled:
+        if not request.is_secure and request.headers.get('X-Forwarded-Proto', 'http') != 'https':
+            url = request.url.replace("http://", "https://", 1)
+            return redirect(url, code=301)
 
     if not os.path.exists('credentials.json'):
         if request.endpoint not in ['setup', 'login']:

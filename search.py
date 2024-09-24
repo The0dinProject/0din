@@ -78,6 +78,11 @@ def local_search(search_term, node_id, search_type='name', category=None):
         cursor.execute(query, tuple([category, search_term] if category else [search_term]))
         results = cursor.fetchall()
 
+        if os.getenv("ENABLE_SSL") == "true" or os.getenv("ENABLE_HTTPS_DOWNLOAD") == "true":
+            protocol = "https"
+        else:
+            protocol = "http"
+
         for row in results:
             match = {
                 'file_name': row[0],
@@ -85,7 +90,8 @@ def local_search(search_term, node_id, search_type='name', category=None):
                 'md5_hash': row[2],
                 'file_size': row[3],
                 'category': row[4],
-                'node_id': node_id
+                'node_id': node_id,
+                'download_url': f"{protocol}://{node_id}/download/{row[2]}"
             }
             matches.append(match)
 
