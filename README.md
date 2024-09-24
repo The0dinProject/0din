@@ -118,11 +118,15 @@ Network Expansion: As more users establish 0din nodes, the network grows, increa
 
 Wiki and Usage Documentation: Comprehensive wiki and usage documents to assist users in setting up and utilizing 0din effectively.
 
+Improved Categorization: More categories, better matching
+
 more controls on the admin panel: like triggering indexing for example, and progress bars for currently running tasks
 
 ### Major Features
 
 Proxying Nodes: Support for proxying one node over another, which is useful for nodes that cannot directly port forward, allowing for greater flexibility in network setup.
+
+File Previews: previewing some files in the search page
 
 ## Status
 
