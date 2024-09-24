@@ -3,7 +3,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     fetch('/json/nodes')
         .then(response => response.json())
-        .then(data => {
+        .then(fetchedData => {
+            let data = fetchedData.map(item => ({
+                x: Math.random() * 100,
+                y: Math.random() * 100,
+                r: 20
+            }));
+
             let chart = new Chart(ctx, {
                 type: 'bubble',
                 data: {
