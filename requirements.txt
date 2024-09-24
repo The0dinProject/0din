@@ -3,3 +3,4 @@ colorlog
 requests
 psycopg2-binary
 cryptography
+gunicorn

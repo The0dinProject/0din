@@ -327,7 +327,8 @@ def total_file_size():
     finally:
         connection.close()
 
+initialize_settings()
+threading.Thread(target=run_scheduler, daemon=True).start()
+
 if __name__ == '__main__':
-    initialize_settings()
-    threading.Thread(target=run_scheduler, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.getenv("NODE_PORT", 5000)))
