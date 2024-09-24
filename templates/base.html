@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileHost - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/" class="logo">
+                <img src="/static/logo/logo.png" alt="FileHost Logo" width="150" height="50">
+            </a>
+            <div class="theme-controls">
+                <select id="color-theme">
+                    <option value="default">Default</option>
+                    <option value="forest">Forest</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                </select>
+                <button id="dark-mode-toggle" aria-label="Toggle dark mode">
+                    <span class="sun">☀️</span>
+                    <span class="moon">🌙</span>
+                </button>
+            </div>
+        </nav>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <script src="/static/js/theme.js"></script>
+</body>
+</html>

@@ -1,39 +1,156 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
-    <script src="/static/js/nodeMap.js"></script>
-    <script src="/static/js/theme-switcher.js" defer></script>
-    <meta charset="UTF-8">
-    <title>Admin Panel</title>
-</head>
-<body>
-    <a href="/">
-        <img src="/static/logo/logo.png" alt="Logo" class="logo">
-    </a>
-    <h1>Admin Panel</h1>
+{% extends "base.html" %}
 
-    <div>
-        <canvas id="nodeMap"></canvas>
-    </div>
+{% block title %}Admin Panel{% endblock %}
 
-    <div>
-        <form method="post">
-            {% for key, value in config.items() %}
-                <label for="{{ key }}">{{ key }}:</label>
-                <input type="text" name="{{ key }}" value="{{ value }}"><br>
-            {% endfor %}
-            <button type="submit">Save</button>
-        </form>
-        <form method="post" action="{{ url_for('shutdown') }}">
-            <button type="submit">Shutdown</button>
-        </form>
-        <form method="post" action="{{ url_for('restart') }}">
-            <button type="submit">Restart</button>
-        </form>
-    </div>
-</body>
-</html>
+{% block content %}
+<h1>Admin Panel</h1>
 
+<div id="nodeMapContainer">
+    <canvas id="nodeMap" width="800" height="400"></canvas>
+</div>
+
+<h2>Settings</h2>
+<form method="post">
+    {% for key, value in config.items() %}
+        <label for="{{ key }}">{{ key }}:</label>
+        <input type="text" id="{{ key }}" name="{{ key }}" value="{{ value }}">
+    {% endfor %}
+    <button type="submit">Save</button>
+</form>
+
+<h2>System Controls</h2>
+<form method="post" action="{{ url_for('shutdown') }}">
+    <button type="submit">Shutdown</button>
+</form>
+
+<form method="post" action="{{ url_for('restart') }}">
+    <button type="submit">Restart</button>
+</form>
+
+<script>
+class Node {
+    constructor(id, x, y, size) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.size = size;
+    }
+}
+
+class NodeMap {
+    constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext('2d');
+        this.nodes = [];
+        this.maxSize = 0;
+        this.minSize = Infinity;
+    }
+
+    async fetchNodes() {
+        try {
+            const response = await fetch('/json/nodes');
+            const nodeIds = await response.json();
+            const nodePromises = nodeIds.map(async (id) => {
+                const sizeResponse = await fetch(`/total_file_size?node=${id}`);
+                const sizeData = await sizeResponse.json();
+                return new Node(
+                    id,
+                    Math.random() * this.canvas.width,
+                    Math.random() * this.canvas.height,
+                    sizeData.total_file_size
+                );
+            });
+            this.nodes = await Promise.all(nodePromises);
+            this.updateSizeRange();
+        } catch (error) {
+            console.error("Error fetching nodes:", error);
+        }
+    }
+
+    updateSizeRange() {
+        this.maxSize = Math.max(...this.nodes.map(node => node.size));
+        this.minSize = Math.min(...this.nodes.map(node => node.size));
+    }
+
+    normalizeSize(size) {
+        return ((size - this.minSize) / (this.maxSize - this.minSize)) * (50 - 10) + 10;
+    }
+
+    isConnected(node1, node2) {
+        const distance = Math.sqrt(Math.pow(node1.x - node2.x, 2) + Math.pow(node1.y - node2.y, 2));
+        return distance < 100;
+    }
+
+    drawNode(node) {
+        this.ctx.beginPath();
+        this.ctx.arc(node.x, node.y, this.normalizeSize(node.size), 0, 2 * Math.PI);
+        this.ctx.fillStyle = 'rgba(0, 123, 255, 0.7)';
+        this.ctx.fill();
+        this.ctx.strokeStyle = 'rgba(0, 123, 255, 1)';
+        this.ctx.stroke();
+    }
+
+    drawEdge(node1, node2, phase) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(node1.x, node1.y);
+        this.ctx.lineTo(node2.x, node2.y);
+        this.ctx.strokeStyle = `rgba(200, 200, 200, ${Math.abs(Math.sin(phase))})`;
+        this.ctx.stroke();
+    }
+
+    draw(timestamp) {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        const phase = timestamp / 1000;
+
+        this.nodes.forEach((node, index) => {
+            this.drawNode(node);
+            this.nodes.slice(index + 1).forEach(otherNode => {
+                if (this.isConnected(node, otherNode)) {
+                    this.drawEdge(node, otherNode, phase);
+                }
+            });
+        });
+
+        requestAnimationFrame(this.draw.bind(this));
+    }
+
+    async init() {
+        await this.fetchNodes();
+        this.draw(0);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const nodeMap = new NodeMap('nodeMap');
+    nodeMap.init();
+});
+</script>
+
+<style>
+    #nodeMapContainer {
+        width: 100%;
+        max-width: 800px;
+        margin: 0 auto 20px auto;
+    }
+    #nodeMap {
+        width: 100%;
+        height: auto;
+        border: 1px solid #ccc;
+    }
+    form {
+        margin-bottom: 20px;
+    }
+    label {
+        display: inline-block;
+        width: 150px;
+        margin-bottom: 10px;
+    }
+    input[type="text"] {
+        width: 300px;
+    }
+    button {
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}

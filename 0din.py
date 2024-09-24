@@ -313,6 +313,20 @@ def nodes():
     global settings
     return jsonify(list(settings["known_nodes"]))
 
+@app.route('/total_file_size', methods=['GET'])
+def total_file_size():
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT SUM(file_size) FROM files;")
+            result = cursor.fetchone()
+            total_size = result[0] if result[0] is not None else 0
+            return jsonify({'total_file_size': total_size})
+    except psycopg2.Error as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        connection.close()
+
 if __name__ == '__main__':
     initialize_settings()
     threading.Thread(target=run_scheduler, daemon=True).start()

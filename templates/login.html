@@ -1,26 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="/static/js/theme-switcher.js" defer></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
-</head>
-<body>
-    <a href="/">
-        <img src="/static/logo/logo.png" alt="Logo" class="logo">
-    </a>
-    <h1>Login</h1>
-    <form method="POST">
-        <label for="username">Username:</label>
-        <input type="text" id="username" name="username" required>
-        <br>
-        <label for="password">Password:</label>
-        <input type="password" id="password" name="password" required>
-        <br>
-        <button type="submit">Login</button>
-    </form>
-</body>
-</html>
+{% extends "base.html" %}
 
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<h1>Login</h1>
+<form method="POST">
+    <label for="username">Username:</label>
+    <input type="text" id="username" name="username" required>
+    <label for="password">Password:</label>
+    <input type="password" id="password" name="password" required>
+    <button type="submit">Login</button>
+</form>
+{% endblock %}

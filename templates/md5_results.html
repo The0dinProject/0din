@@ -1,26 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="/static/js/theme-switcher.js" defer></script> <!-- Fixed the path -->
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MD5 Search Results</title>
-</head>
-<body>
-    <a href="/">
-        <img src="/static/logo/logo.png" alt="Logo" class="logo">
-    </a>
-    <h1>Search Results for MD5: {{ md5_hash }}</h1>
-    <ul>
-        {% for result in results %}
-            <li>
-                <a href="http://{{ result.node_id }}/download/{{ result.md5_hash }}">
-                    {{ result.file_name }} - {{ result.file_size }} - {{ result.category }} - {{result.node_id}}
-                </a>
-            </li>
-        {% endfor %}
-    </ul>
-</body>
-</html>
+{% extends "base.html" %}
 
+{% block title %}MD5 Search Results{% endblock %}
+
+{% block content %}
+<h1>Search Results for MD5: {{ md5_hash }}</h1>
+<ul>
+    {% for result in results %}
+        <li>
+            <a href="http://{{ result.node_id }}/download/{{ result.md5_hash }}">
+                {{ result.file_name }} - {{ result.file_size }} - {{ result.category }} - {{result.node_id}}
+            </a>
+        </li>
+    {% endfor %}
+</ul>
+{% endblock %}

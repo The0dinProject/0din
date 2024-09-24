@@ -1,27 +1,31 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="/static/js/theme-switcher.js" defer></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Results</title>
-</head>
-<body>
-    <a href="/">
-        <img src="/static/logo/logo.png" alt="Logo" class="logo">
-    </a>
-    <h1>Search Results for "{{ query }}"</h1>
-    <ul>
-        {% for result in results %}
-        <li>
-            <a href="{{ url_for('md5_search', md5_hash=result['md5_hash']) }}">
-                {{ result['file_name'] }} - {{ result['file_size'] }} bytes ({{ result['category'] }} - {{result['node_id']}})
-            </a>
-        </li>
-        {% endfor %}
-    </ul>
-    <a href="/">Back to Search</a>
-</body>
-</html>
+{% extends "base.html" %}
 
+{% block title %}Global Search{% endblock %}
+
+{% block content %}
+<h1>Global Search</h1>
+<form action="/global_search" method="POST">
+    <label for="query">Search:</label>
+    <input type="text" id="query" name="query" required>
+    
+    <label for="category">Category (optional):</label>
+    <select id="category" name="category">
+        <option value="all">All</option>
+        <option value="movie">Movie</option>
+        <option value="tv show">TV Show</option>
+        <option value="book">Book</option>
+        <option value="audiobook">Audiobook</option>
+        <option value="podcast">Podcasts</option>
+        <option value="music">Music</option>
+        <option value="image">Image</option>
+        <option value="ebook">Ebooks</option>
+        <option value="compressed">Archives</option>
+        <option value="audio">Audio</option>
+        <option value="video">Video</option>
+        <option value="plaintext">Plaintext</option>
+        <option value="document">Documents</option>
+    </select>
+    
+    <button type="submit">Search</button>
+</form>
+{% endblock %}
