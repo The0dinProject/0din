@@ -78,7 +78,7 @@ def local_search(search_term, node_id, search_type='name', category=None):
         cursor.execute(query, tuple([category, search_term] if category else [search_term]))
         results = cursor.fetchall()
 
-        if os.getenv("ENABLE_SSL") == "true" or os.getenv("ENABLE_HTTPS_DOWNLOAD") == "true":
+        if os.getenv("ENABLE_SSL") == "true" or os.getenv("ENABLE_HTTPS_REDIRECT") == "true":
             protocol = "https"
         else:
             protocol = "http"
