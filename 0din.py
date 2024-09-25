@@ -10,7 +10,7 @@ import search
 import peer_discovery
 import indexer
 import psycopg2
-from psycopg2 import pool
+from psycopg2 import pool, OperationalError
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -35,12 +35,40 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
-db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=10, 
-                                      dbname=os.getenv('DB_NAME'),
-                                      user=os.getenv('DB_USER'),
-                                      password=os.getenv('DB_PASSWORD'),
-                                      host=os.getenv('DB_HOST', 'localhost'),
-                                      port=os.getenv('DB_PORT', '5432'))
+def create_db_pool():
+    max_attempts = 5
+    attempt = 0
+    backoff_time = 1  # Initial backoff time in seconds
+
+    while attempt < max_attempts:
+        try:
+            db_pool = pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dbname=os.getenv('DB_NAME'),
+                user=os.getenv('DB_USER'),
+                password=os.getenv('DB_PASSWORD'),
+                host=os.getenv('DB_HOST', 'localhost'),
+                port=os.getenv('DB_PORT', '5432')
+            )
+            # Test the connection
+            conn = db_pool.getconn()
+            db_pool.putconn(conn)  # Return the connection back to the pool
+            return db_pool
+        except OperationalError:
+            attempt += 1
+            print(f"Attempt {attempt} failed. Retrying in {backoff_time} seconds...")
+            time.sleep(backoff_time)
+            backoff_time *= 2  # Exponential backoff
+
+    raise Exception("Unable to connect to the database after multiple attempts, verify your database status.")
+
+# Usage
+try:
+    db_pool = create_db_pool()
+    print("Database pool created successfully.")
+except Exception as e:
+    print(f"Error creating database pool: {e}")
 
 # Flask application
 app = Flask(__name__)
