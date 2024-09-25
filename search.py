@@ -1,4 +1,5 @@
 import psycopg2
+from psycopg2 import pool
 import os
 import requests
 import logging
@@ -25,21 +26,24 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
+db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=10, 
+                                      dbname=os.getenv('DB_NAME'),
+                                      user=os.getenv('DB_USER'),
+                                      password=os.getenv('DB_PASSWORD'),
+                                      host=os.getenv('DB_HOST', 'localhost'),
+                                      port=os.getenv('DB_PORT', '5432'))
+
 def get_db_connection():
     """Establish a connection to the PostgreSQL database."""
     try:
-        conn = psycopg2.connect(
-            dbname=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            host=os.getenv('DB_HOST', 'localhost'),
-            port=os.getenv('DB_PORT', '5432')
-        )
-        logger.info("Database connection established successfully.")
+        conn = db_pool.getconn()
+        logger.info("Database connection retrieved from pool.")
         return conn
     except psycopg2.Error as e:
         logger.error(f"Database connection failed: {e}")
         raise
+    finally:
+        db_pool.putconn(conn)
 
 def local_search(search_term, node_id, search_type='name', category=None):
     """
@@ -61,8 +65,8 @@ def local_search(search_term, node_id, search_type='name', category=None):
     try:
         logger.debug(f"Starting local search: search_term={search_term}, search_type={search_type}, category={category}")
 
-        # Create the SQL query
-        query = "SELECT file_name, path, md5_hash, file_size, category FROM files WHERE"
+        # Create the SQL query to include download_count
+        query = "SELECT file_name, path, md5_hash, file_size, category, download_count FROM files WHERE"
         conditions = []
         if category:
             conditions.append(" category = %s")
@@ -90,6 +94,7 @@ def local_search(search_term, node_id, search_type='name', category=None):
                 'md5_hash': row[2],
                 'file_size': row[3],
                 'category': row[4],
+                'download_count': row[5],  # Added download_count to the result
                 'node_id': node_id,
                 'download_url': f"{protocol}://{node_id}/download/{row[2]}"
             }
@@ -116,7 +121,7 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
         category (str, optional): Category to filter the search results by.
 
     Returns:
-        list: A combined list of dictionaries from both local and remote searches.
+        list: A combined list of dictionaries from both local and remote searches, sorted by download_count in descending order.
     """
     global_matches = []
 
@@ -156,5 +161,9 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
             remote_matches = future.result()
             global_matches.extend(remote_matches)
 
+    # Sort global matches by download_count in descending order
+    global_matches = sorted(global_matches, key=lambda x: x.get('download_count', 0), reverse=True)
+
     logger.info(f"Global search completed. Total matches found: {len(global_matches)}")
     return global_matches
+

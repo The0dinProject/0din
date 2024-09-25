@@ -1,6 +1,7 @@
 import os
 import hashlib
 import psycopg2
+from psycopg2 import pool
 import re
 import logging
 import colorlog
@@ -22,6 +23,13 @@ handler.setFormatter(
 )
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
+
+db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=10, 
+                                      dbname=os.getenv('DB_NAME'),
+                                      user=os.getenv('DB_USER'),
+                                      password=os.getenv('DB_PASSWORD'),
+                                      host=os.getenv('DB_HOST', 'localhost'),
+                                      port=os.getenv('DB_PORT', '5432'))
 
 def _calculate_md5(file_path):
     """Calculate the MD5 hash of a given file."""
@@ -109,7 +117,8 @@ def _create_database(connection):
                 md5_hash VARCHAR(32) UNIQUE,
                 file_size BIGINT,
                 category VARCHAR(100),
-                date_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                date_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                download_count INT DEFAULT 0  -- New field added
             );
             """)
             connection.commit()
@@ -183,18 +192,16 @@ def indexer(directory):
         directory (str): The directory to index.
     """
     logger.debug(f"Starting indexing for directory {directory}")
+    
     try:
-        connection = psycopg2.connect(
-            dbname=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            host=os.getenv('DB_HOST', 'localhost'),
-            port=os.getenv('DB_PORT', '5432')
-        )
-        logger.info("Connected to the database successfully.")
-    except Exception as e:
-        logger.critical(f"Database connection error: {e}")
-        return
+        connection = db_pool.getconn()
+        logger.info("Database connection retrieved from pool.")
+    except psycopg2.Error as e:
+        logger.error(f"Database connection failed: {e}")
+        raise
+
+    db_pool.putconn(connection)
+
 
     # Create the database table if it doesn't exist
     _create_database(connection)

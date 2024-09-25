@@ -10,6 +10,7 @@ import search
 import peer_discovery
 import indexer
 import psycopg2
+from psycopg2 import pool
 from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -33,6 +34,13 @@ console_handler.setFormatter(formatter)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
+
+db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=10, 
+                                      dbname=os.getenv('DB_NAME'),
+                                      user=os.getenv('DB_USER'),
+                                      password=os.getenv('DB_PASSWORD'),
+                                      host=os.getenv('DB_HOST', 'localhost'),
+                                      port=os.getenv('DB_PORT', '5432'))
 
 # Flask application
 app = Flask(__name__)
@@ -62,13 +70,16 @@ def setup_admin_credentials(username, password):
         json.dump({'username': username, 'password': hashed_password}, f)
 
 def get_db_connection():
-    return psycopg2.connect(
-        dbname=os.getenv('DB_NAME'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        host=os.getenv('DB_HOST', 'localhost'),
-        port=os.getenv('DB_PORT', '5432')
-    )
+    """Establish a connection to the PostgreSQL database."""
+    try:
+        conn = db_pool.getconn()
+        logger.info("Database connection retrieved from pool.")
+        return conn
+    except psycopg2.Error as e:
+        logger.error(f"Database connection failed: {e}")
+        raise
+    finally:
+        db_pool.putconn(conn)
 
 def initialize_settings():
     if not os.path.exists('settings.json'):
@@ -304,6 +315,7 @@ def download_file(md5_hash):
     cursor = conn.cursor()
     
     try:
+        # Select the file path based on the provided md5_hash
         select_query = """
         SELECT path FROM files WHERE md5_hash = %s;
         """
@@ -312,6 +324,13 @@ def download_file(md5_hash):
         
         if result:
             path = result[0]
+            
+            # Increment the download_count for the specific file
+            update_query = """
+            UPDATE files SET download_count = download_count + 1 WHERE md5_hash = %s;
+            """
+            cursor.execute(update_query, (md5_hash,))
+            conn.commit()  # Commit the update
             
             return send_file(path)
         else:

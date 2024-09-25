@@ -8,10 +8,12 @@
     {% for result in results %}
     <li>
         <a href="{{ url_for('md5_search', md5_hash=result['md5_hash']) }}">
-            {{ result['file_name'] }} - {{ result['file_size'] }} bytes ({{ result['category'] }} - {{result['node_id']}})
+            {{ result['file_name'] }} - {{ result['file_size'] }} bytes ({{ result['category'] }} - {{ result['node_id']}})
         </a>
+        <span> | Downloads: {{ result['download_count'] }}</span>
     </li>
     {% endfor %}
 </ul>
 <a href="/">Back to Search</a>
 {% endblock %}
+
