@@ -55,6 +55,8 @@ nav {
     font-weight: bold;
     color: var(--color-primary);
     text-decoration: none;
+    width: 80%; /* Thinner logo */
+    height: auto; /* Maintain aspect ratio */
 }
 
 .theme-controls {
@@ -91,6 +93,10 @@ input, select, button {
     margin-bottom: 1rem;
     border: 1px solid #d1d5db;
     border-radius: 4px;
+}
+
+select {
+    width: 200px; /* Wider select element */
 }
 
 button {
@@ -149,3 +155,4 @@ a:hover {
 .moon {
     display: inline;
 }
+
