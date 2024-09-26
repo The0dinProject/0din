@@ -1,5 +1,4 @@
 import psycopg2
-from psycopg2 import pool
 import os
 import requests
 import logging
@@ -26,26 +25,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
-db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=10, 
-                                      dbname=os.getenv('DB_NAME'),
-                                      user=os.getenv('DB_USER'),
-                                      password=os.getenv('DB_PASSWORD'),
-                                      host=os.getenv('DB_HOST', 'localhost'),
-                                      port=os.getenv('DB_PORT', '5432'))
-
-def get_db_connection():
-    """Establish a connection to the PostgreSQL database."""
-    try:
-        conn = db_pool.getconn()
-        logger.info("Database connection retrieved from pool.")
-        return conn
-    except psycopg2.Error as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-    finally:
-        db_pool.putconn(conn)
-
-def local_search(search_term, node_id, search_type='name', category=None):
+def local_search(search_term, node_id, conn, search_type='name', category=None):
     """
     Perform a local search in the PostgreSQL database for a specific search term.
 
@@ -59,7 +39,6 @@ def local_search(search_term, node_id, search_type='name', category=None):
         list: A list of dictionaries matching the search term and category (if specified), with 'node_id' included.
     """
     matches = []
-    conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
@@ -109,7 +88,7 @@ def local_search(search_term, node_id, search_type='name', category=None):
 
     return matches
 
-def global_search(search_term, known_nodes, current_node_id, search_type='name', category=None):
+def global_search(search_term, known_nodes, current_node_id, conn, search_type='name', category=None):
     """
     Perform a global search across all known nodes and the local index in the PostgreSQL database.
 
@@ -128,7 +107,7 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
     logger.debug(f"Initiating global search for term '{search_term}' on node '{current_node_id}'")
     
     # Perform local search
-    local_matches = local_search(search_term, current_node_id, search_type, category)
+    local_matches = local_search(search_term, current_node_id, conn, search_type, category)
     global_matches.extend(local_matches)
 
     def remote_search(node_id):
@@ -142,7 +121,7 @@ def global_search(search_term, known_nodes, current_node_id, search_type='name',
                 "search_term": search_term,
                 "search_type": search_type,
                 "category": category
-            })
+            }, verify=False)
             response.raise_for_status()
             remote_matches = response.json()
             for match in remote_matches:

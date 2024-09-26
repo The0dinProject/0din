@@ -24,13 +24,6 @@ handler.setFormatter(
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
-db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=10, 
-                                      dbname=os.getenv('DB_NAME'),
-                                      user=os.getenv('DB_USER'),
-                                      password=os.getenv('DB_PASSWORD'),
-                                      host=os.getenv('DB_HOST', 'localhost'),
-                                      port=os.getenv('DB_PORT', '5432'))
-
 def _calculate_md5(file_path):
     """Calculate the MD5 hash of a given file."""
     logger.debug(f"Calculating MD5 for {file_path}")
@@ -183,7 +176,7 @@ def _index_directory(directory, exclude_patterns, connection):
 
     return file_index
 
-def indexer(directory):
+def indexer(directory, connection):
     """
     Index the files in the given directory, exclude files based on .exclude_patterns,
     and store the index in a PostgreSQL database.
@@ -193,14 +186,6 @@ def indexer(directory):
     """
     logger.debug(f"Starting indexing for directory {directory}")
     
-    try:
-        connection = db_pool.getconn()
-        logger.info("Database connection retrieved from pool.")
-    except psycopg2.Error as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-
-    db_pool.putconn(connection)
 
 
     # Create the database table if it doesn't exist

@@ -98,16 +98,15 @@ def setup_admin_credentials(username, password):
         json.dump({'username': username, 'password': hashed_password}, f)
 
 def get_db_connection():
-    """Establish a connection to the PostgreSQL database."""
     try:
         conn = db_pool.getconn()
+        if conn.closed != 0:
+            raise psycopg2.InterfaceError("Connection is closed.")
         logger.info("Database connection retrieved from pool.")
         return conn
     except psycopg2.Error as e:
         logger.error(f"Database connection failed: {e}")
         raise
-    finally:
-        db_pool.putconn(conn)
 
 def initialize_settings():
     if not os.path.exists('settings.json'):
@@ -211,7 +210,8 @@ def restart():
 
 def run_indexer():
     logger.info("Running indexer...")
-    indexer.indexer(settings['DIRECTORY'])  # Ensure this interacts with the database correctly
+    conn = get_db_connection()
+    indexer.indexer(settings['DIRECTORY'], conn)  # Ensure this interacts with the database correctly
 
     next_run = datetime.now() + timedelta(hours=24)
     delay = (next_run - datetime.now()).total_seconds()
@@ -293,28 +293,31 @@ def home():
 
 @app.route('/global_search', methods=['POST'])
 def global_search_route():
+    conn = get_db_connection()
     query = request.form.get('query')
     category = request.form.get('category', None)
     if category == 'all':
         category = None
     
-    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], conn, "name", category)
     
     return render_template('results.html', query=query, category=category, results=results)
 
 @app.route('/json/global_search', methods=['POST'])
 def global_search_json():
+    conn = get_db_connection()
     query = request.form.get('query')
     category = request.form.get('category', None)
     if category == 'all':
         category = None
     
-    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], "name", category)
+    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], conn, "name", category)
     
     return jsonify(results)
 
 @app.route('/localsearch', methods=['POST'])
 def localsearch_endpoint():
+    conn = get_db_connection()
     data = request.get_json()
 
     search_term = data.get('search_term')
@@ -323,19 +326,28 @@ def localsearch_endpoint():
 
     logger.debug(f"Received request for local search: search_term={search_term}, search_type={search_type}, category={category}")
 
-    matches = search.local_search(search_term, os.getenv('NODE_ID'), search_type, category)
+    matches = search.local_search(search_term, os.getenv('NODE_ID'), conn, search_type, category)
 
     return jsonify(matches), 200
 
 @app.route('/md5_search/<md5_hash>')
 def md5_search(md5_hash):
-    results = search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
-    
-    return render_template('md5_results.html', md5_hash=md5_hash, results=results)
+    conn = None
+    try:
+        conn = get_db_connection()  # Retrieve a connection from the pool
+        results = search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], conn, "md5")
+        return render_template('md5_results.html', md5_hash=md5_hash, results=results)
+    except Exception as e:
+        logger.error(f"Error during MD5 search: {e}")
+        return "An error occurred during the search."
+    finally:
+        if conn:
+            db_pool.putconn(conn)  # Return the connection to the pool after using it
 
 @app.route('/json/md5_search/<md5_hash>')
 def md5_search_json(md5_hash):
-    return search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], "md5")
+    conn = get_db_connection()
+    return search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], conn, "md5")
     
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
