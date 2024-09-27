@@ -208,6 +208,24 @@ def restart():
     os.execv(__file__, ['python'] + [__file__])
     return 'Server restarting...'
 
+@app.route('/indexer', methods=['POST'])
+def trigger_indexer():
+    if not session.get('logged_in'):
+        return "Unauthorized", 401  # Return an unauthorized response
+
+    conn = get_db_connection()  # Call the function to get the connection
+
+    # Assuming 'path' is passed in the POST request body
+    path = request.json.get('path')  # Retrieve path from JSON payload
+    if not path:
+        return "Path is required", 400  # Return a bad request response if path is missing
+
+    try:
+        indexer.indexer(path, conn)  # Call the indexer function
+        return "Indexer run successfully", 200  # Return success message with status code
+    except Exception as e:
+        return f"An error occurred: {str(e)}", 500  # Handle any exceptions
+
 def run_indexer():
     logger.info("Running indexer...")
     conn = get_db_connection()
