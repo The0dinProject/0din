@@ -24,8 +24,20 @@ handler.setFormatter(
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
-def _calculate_md5(file_path):
-    """Calculate the MD5 hash of a given file."""
+def _calculate_md5(file_path, connection):
+    """Calculate or reuse the MD5 hash of a given file."""
+    logger.debug(f"Checking MD5 for {file_path}")
+    
+    # Check if the file's hash is already stored in the database
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT md5_hash FROM files WHERE path = %s;", (file_path,))
+        result = cursor.fetchone()
+    
+    if result:
+        logger.info(f"Reusing existing MD5 for {file_path}: {result[0]}")
+        return result[0]  # Reuse the stored MD5 hash
+    
+    # If not found, calculate MD5 hash
     logger.debug(f"Calculating MD5 for {file_path}")
     md5_hash = hashlib.md5()
     try:
@@ -140,7 +152,7 @@ def _index_directory(directory, exclude_patterns, connection):
             file_extension = os.path.splitext(file_name)[1]
 
             # Check if the file's MD5 hash already exists in the database
-            file_hash = _calculate_md5(file_path)
+            file_hash = _calculate_md5(file_path, connection)
             if file_hash is None:
                 logger.error(f"Skipping {file_path} due to MD5 error")
                 continue

@@ -282,11 +282,17 @@ def schedule_tasks():
     next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=settings['INDEX_FILES_TIME'])
     if now > next_index_run:
         next_index_run += timedelta(days=1)
-    
+
     delay_index = (next_index_run - now).total_seconds()
     logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
-    scheduler.enter(delay_index, 1, run_indexer)
     
+    # Run indexer immediately
+    run_indexer()
+
+    # Schedule the next indexer run
+    scheduler.enter(delay_index, 1, run_indexer)
+
+    # Fetch known nodes
     response = requests.get(settings['URL'])
     if response.status_code == 200:
         data = json.loads(response.text)
@@ -295,8 +301,10 @@ def schedule_tasks():
         logger.error(f"Failed to download node list, status code {response.status_code}")
         return None
 
+    # Run other tasks immediately and schedule them
     run_announcer()
     scheduler.enter(0, 1, run_announcer)
+    
     run_heartbeat_checker()
     scheduler.enter(0, 1, run_heartbeat_checker)
 
