@@ -27,6 +27,14 @@
     <button type="submit">Restart</button>
 </form>
 
+<!-- New button to call the indexer endpoint -->
+<h2>Indexing Controls</h2>
+<form method="post" action="{{ url_for('run_indexer') }}">
+    <label for="path">Enter Path:</label>
+    <input type="text" id="path" name="path" placeholder="Enter the path here" required>
+    <button type="submit">Run Indexer</button>
+</form>
+
 <script>
 class Node {
     constructor(id, x, y, size) {
@@ -154,3 +162,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 </style>
 {% endblock %}
+
