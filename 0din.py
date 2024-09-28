@@ -15,6 +15,9 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, redirect, request, jsonify, flash, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from colorlog import ColoredFormatter
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Logging configuration
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
