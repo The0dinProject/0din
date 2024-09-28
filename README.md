@@ -3,7 +3,9 @@
 Decentralized Federated File Hosting Platform
 ## Overview
 
-0din is an early alpha-stage decentralized federated file hosting platform designed to offer a scalable, user-friendly solution for sharing and accessing files across a distributed network. It merges the benefits of decentralization and federation to create a dynamic and resilient file-sharing ecosystem.
+0din is an early alpha-stage, decentralized, federated file hosting platform that aims to provide a scalable and user-friendly solution for sharing and accessing files across a distributed network. By combining the strengths of decentralization and federation, 0din creates a dynamic, resilient ecosystem for file-sharing.
+
+For further details and guides, check out our wiki [here](https://0din.dns-cloud.net/x/guides.html).
 
 ## Installation
 
