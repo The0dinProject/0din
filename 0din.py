@@ -287,6 +287,7 @@ def schedule_tasks():
     logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
     
     # Run indexer immediately
+    logger.info("Starting indexer")
     run_indexer()
 
     # Schedule the next indexer run
