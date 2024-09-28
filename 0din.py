@@ -435,6 +435,7 @@ def total_file_size():
 
 initialize_settings()
 threading.Thread(target=run_scheduler, daemon=True).start()
+schedule_tasks()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv("NODE_PORT", 5000)))
