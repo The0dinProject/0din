@@ -12,7 +12,7 @@ import indexer
 import psycopg2
 from psycopg2 import pool, OperationalError
 from datetime import datetime, timedelta
-from flask import Flask, render_template, redirect, request, jsonify, send_file, abort, session, url_for
+from flask import Flask, render_template, redirect, request, jsonify, flash, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from colorlog import ColoredFormatter
 
@@ -152,6 +152,13 @@ def setup():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+        password_confirmation = request.form['password_confirmation']
+
+        if (password_confirmation != password):
+            flash("Passwords do not match", 'error')
+
+            return redirect(url_for('setup'))
+
         setup_admin_credentials(username, password)
         return redirect(url_for('login'))
     
