@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from colorlog import ColoredFormatter
 from dotenv import load_dotenv
 from database import get_db_connection, put_connection
-from task_scheduler import start_scheduler, schedule_tasks
+from scheduler import start_scheduler, schedule_tasks
 
 load_dotenv()
 
