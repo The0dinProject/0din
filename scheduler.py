@@ -4,7 +4,7 @@ import threading
 import logging
 import requests
 from datetime import datetime, timedelta
-from settings import get_setting, return_all
+from settings import get_setting, return_all, set_setting
 from database import get_db_connection
 import peer_discovery
 import indexer
@@ -46,8 +46,8 @@ def run_indexer():
 def run_announcer():
     """Runs the announcer task."""
     logger.info("Running announcer...")
-    known_nodes = return_all()['known_nodes']
-    announced_nodes = set(return_all()['announced_nodes'])
+    known_nodes = get_setting("known_nodes")
+    announced_nodes = set()
     new_nodes_discovered = False
 
     for node in known_nodes:
