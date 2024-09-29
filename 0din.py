@@ -12,6 +12,7 @@ from colorlog import ColoredFormatter
 from dotenv import load_dotenv
 from database import get_db_connection, put_connection
 from scheduler import start_scheduler, schedule_tasks
+import peer_discovery
 
 load_dotenv()
 
@@ -269,6 +270,33 @@ def total_file_size():
         return jsonify({'error': str(e)}), 500
     finally:
         connection.close()
+
+@app.route('/announce', methods=['POST'])
+def announce_endpoint():
+    """
+    Endpoint to handle node announcements.
+    """
+    data = request.json
+    node_id = data.get("node_id")
+    response_url = data.get("response_url")
+    received_known_nodes = data.get("known_nodes", [])
+
+    if not node_id or not response_url:
+        return jsonify({"error": "Missing node_id or response_url"}), 400
+
+    # Handle announcement
+    updated_known_nodes = peer_discovery.handle_announcement(node_id, received_known_nodes, settings.get_setting("known_nodes"), response_url)
+
+    return jsonify({"known_nodes": list(updated_known_nodes)}), 200
+
+@app.route('/heartbeat', methods=['GET'])
+def heartbeat():
+    """
+    Endpoint to respond to a heartbeat ping.
+    
+    Returns a JSON response indicating the node is alive.
+    """
+    return jsonify({"status": "alive", "message": "Heartbeat response from the node"}), 200
 
 start_scheduler()
 schedule_tasks()

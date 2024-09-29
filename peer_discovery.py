@@ -74,7 +74,7 @@ def announce(announce_url, node_id, known_nodes, max_retries=3, timeout=5):
     return set()
 
 
-def handle_announcement(node_id, received_known_nodes, known_nodes, announced_nodes, response_url):
+def handle_announcement(node_id, received_known_nodes, known_nodes, response_url):
     """
     Handle an incoming announcement from another node, update the known nodes list,
     and return the updated list of known nodes to the announcing node.
@@ -89,20 +89,18 @@ def handle_announcement(node_id, received_known_nodes, known_nodes, announced_no
     Returns:
         set: Updated set of known nodes after processing the announcement.
     """
-    if node_id not in announced_nodes:
-        logger.debug(f"Handling announcement from {node_id}")
-        announced_nodes.add(node_id)
-        known_nodes.add(node_id)
-        known_nodes.update(received_known_nodes)
-        logger.info(f"Updated known nodes with {received_known_nodes}")
+    logger.debug(f"Handling announcement from {node_id}")
+    known_nodes.add(node_id)
+    known_nodes.update(received_known_nodes)
+    logger.info(f"Updated known nodes with {received_known_nodes}")
 
-        payload = {"known_nodes": list(known_nodes)}
-        try:
-            response = requests.post(response_url, json=payload)
-            response.raise_for_status()
-            logger.info(f"Successfully sent response to {response_url}")
-        except requests.RequestException as e:
-            logger.error(f"Failed to send response to {response_url}: {e}")
+    payload = {"known_nodes": list(known_nodes)}
+    try:
+        response = requests.post(response_url, json=payload)
+        response.raise_for_status()
+        logger.info(f"Successfully sent response to {response_url}")
+    except requests.RequestException as e:
+        logger.error(f"Failed to send response to {response_url}: {e}")
 
     return known_nodes
 
@@ -124,7 +122,7 @@ def heartbeat_ping(node_url, timeout=5):
 
     try:
         logger.debug(f"Pinging node at {node_url}")
-        response = requests.get(node_url, timeout=timeout)
+        response = requests.get(f"{node_url}/heartbeat", timeout=timeout)
         if response.status_code == 200 and 'heartbeat' in response.text:
             logger.info(f"Heartbeat valid from {node_url}")
             return 0
