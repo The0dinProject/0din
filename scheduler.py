@@ -58,6 +58,7 @@ def run_announcer():
             if new_nodes:
                 new_nodes_discovered = True
                 known_nodes.update(new_nodes)
+    set_setting("known_nodes", known_nodes)
 
     logger.info(f"Known nodes: {known_nodes}")
     logger.info(f"Announced nodes: {announced_nodes}")
