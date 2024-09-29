@@ -1,21 +1,17 @@
 import os
 import json
-import time
 import logging
 import secrets
-import requests
-import threading
-import sched
 import search
-import peer_discovery
 import indexer
 import psycopg2
-from psycopg2 import pool, OperationalError
-from datetime import datetime, timedelta
+import settings
 from flask import Flask, render_template, redirect, request, jsonify, flash, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from colorlog import ColoredFormatter
 from dotenv import load_dotenv
+from database import get_db_connection, put_connection
+from task_scheduler import start_scheduler, schedule_tasks
 
 load_dotenv()
 
@@ -38,86 +34,13 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
-def create_db_pool():
-    max_attempts = 5
-    attempt = 0
-    backoff_time = 1  # Initial backoff time in seconds
-
-    while attempt < max_attempts:
-        try:
-            db_pool = pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=10,
-                dbname=os.getenv('DB_NAME'),
-                user=os.getenv('DB_USER'),
-                password=os.getenv('DB_PASSWORD'),
-                host=os.getenv('DB_HOST', 'localhost'),
-                port=os.getenv('DB_PORT', '5432')
-            )
-            # Test the connection
-            conn = db_pool.getconn()
-            db_pool.putconn(conn)  # Return the connection back to the pool
-            return db_pool
-        except OperationalError:
-            attempt += 1
-            print(f"Attempt {attempt} failed. Retrying in {backoff_time} seconds...")
-            time.sleep(backoff_time)
-            backoff_time *= 2  # Exponential backoff
-
-    raise Exception("Unable to connect to the database after multiple attempts, verify your database status.")
-
-# Usage
-try:
-    db_pool = create_db_pool()
-    print("Database pool created successfully.")
-except Exception as e:
-    print(f"Error creating database pool: {e}")
-
-# Flask application
 app = Flask(__name__)
-scheduler = sched.scheduler(time.time, time.sleep)
 app.secret_key = secrets.token_hex(16)
-
-# Default configuration
-DEFAULT_CONFIG = {
-    'NODE_ID': os.getenv('NODE_ID', '127.0.0.1:5000'),
-    'LAST_EXECUTION_FILE': 'last_execution.txt',
-    'INDEX_FILES_TIME': 1,
-    'PEER_DISCOVER_INTERVAL': 1,
-    'DIRECTORY': '/the/directory/to/be/shared',
-    'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
-    'HEARTBEAT_INTERVAL': 10,
-}
-
-# Global settings dictionary
-settings = {
-    'known_nodes': set(os.getenv('KNOWN_NODES', '').split(', ')),
-    'announced_nodes': set(),
-}
 
 def setup_admin_credentials(username, password):
     hashed_password = generate_password_hash(password)
     with open('credentials.json', 'w') as f:
         json.dump({'username': username, 'password': hashed_password}, f)
-
-def get_db_connection():
-    try:
-        conn = db_pool.getconn()
-        if conn.closed != 0:
-            raise psycopg2.InterfaceError("Connection is closed.")
-        logger.info("Database connection retrieved from pool.")
-        return conn
-    except psycopg2.Error as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
-
-def initialize_settings():
-    if not os.path.exists('settings.json'):
-        with open('settings.json', 'w') as f:
-            json.dump(DEFAULT_CONFIG, f, indent=4)
-    with open('settings.json') as f:
-        config = json.load(f)
-    settings.update({key: config.get(key, value) for key, value in DEFAULT_CONFIG.items()})
 
 def load_credentials():
     if os.path.exists('credentials.json'):
@@ -185,7 +108,7 @@ def admin():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
 
-    config = settings.copy()
+    config = settings.return_all()
 
     if request.method == 'POST':
         for key in config:
@@ -236,94 +159,6 @@ def trigger_indexer():
     except Exception as e:
         return f"An error occurred: {str(e)}", 500  # Handle any exceptions
 
-def run_indexer():
-    logger.info("Running indexer...")
-    conn = get_db_connection()
-    indexer.indexer(settings['DIRECTORY'], conn)  # Ensure this interacts with the database correctly
-
-    next_run = datetime.now() + timedelta(hours=24)
-    delay = (next_run - datetime.now()).total_seconds()
-    logger.info(f"Scheduling indexer for the next run in 24 hours")
-    scheduler.enter(delay, 1, run_indexer)
-
-def run_announcer():
-    logger.info("Running announcer...")
-    new_nodes_discovered = False
-    for node in list(settings['known_nodes']):
-        if node not in settings['announced_nodes']:
-            logger.info(f"Announcing to {node}...")
-            new_nodes = peer_discovery.announce(f"http://{node}/announce", settings['NODE_ID'], settings['known_nodes'])
-            settings['announced_nodes'].add(node)
-            if new_nodes:
-                new_nodes_discovered = True
-                settings['known_nodes'].update(new_nodes)
-    
-    logger.info(f"Known nodes: {settings['known_nodes']}")
-    logger.info(f"Announced nodes: {settings['announced_nodes']}")
-    
-    if not new_nodes_discovered:
-        logger.info("No new nodes discovered, stopping announcer.")
-    
-    delay = settings['PEER_DISCOVER_INTERVAL'] * 3600
-    logger.info(f"Scheduling announcer for the next run in {settings['PEER_DISCOVER_INTERVAL']} hours")
-    scheduler.enter(delay, 1, run_announcer)
-
-def run_heartbeat_checker():
-    logger.info("Running heartbeat checker...")
-    nodes_to_remove = set()
-    for node in list(settings['known_nodes']):
-        result = peer_discovery.heartbeat_ping(f"http://{node}/heartbeat")
-        if result == 1:
-            logger.info(f"Node {node} is unreachable or invalid, removing from known_nodes.")
-            nodes_to_remove.add(node)
-        elif result == 2:
-            logger.error("No internet connection, cannot perform heartbeat check.")
-            break
-    
-    settings['known_nodes'].difference_update(nodes_to_remove)
-    logger.info(f"Updated known nodes: {settings['known_nodes']}")
-    
-    delay = settings['HEARTBEAT_INTERVAL'] * 60
-    logger.info(f"Scheduling heartbeat checker for the next run in {settings['HEARTBEAT_INTERVAL']} minutes")
-    scheduler.enter(delay, 1, run_heartbeat_checker)
-
-def schedule_tasks():
-    now = datetime.now()
-    next_index_run = datetime.combine(now.date(), datetime.min.time()) + timedelta(hours=settings['INDEX_FILES_TIME'])
-    if now > next_index_run:
-        next_index_run += timedelta(days=1)
-
-    delay_index = (next_index_run - now).total_seconds()
-    logger.info(f"Scheduling indexer for {next_index_run} (in {delay_index // 3600} hours and {(delay_index % 3600) // 60} minutes)")
-    
-    # Run indexer immediately
-    logger.info("Starting indexer")
-    run_indexer()
-
-    # Schedule the next indexer run
-    scheduler.enter(delay_index, 1, run_indexer)
-
-    # Fetch known nodes
-    response = requests.get(settings['URL'])
-    if response.status_code == 200:
-        data = json.loads(response.text)
-        settings['known_nodes'].update(data)
-    else:
-        logger.error(f"Failed to download node list, status code {response.status_code}")
-        return None
-
-    # Run other tasks immediately and schedule them
-    run_announcer()
-    scheduler.enter(0, 1, run_announcer)
-    
-    run_heartbeat_checker()
-    scheduler.enter(0, 1, run_heartbeat_checker)
-
-def run_scheduler():
-    while True:
-        scheduler.run(blocking=False)
-        time.sleep(1)
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -336,7 +171,7 @@ def global_search_route():
     if category == 'all':
         category = None
     
-    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], conn, "name", category)
+    results = search.global_search(query, settings.get_setting("known_nodes"), settings.get_setting("NODE_ID"), conn, "name", category)
     
     return render_template('results.html', query=query, category=category, results=results)
 
@@ -348,7 +183,7 @@ def global_search_json():
     if category == 'all':
         category = None
     
-    results = search.global_search(query, settings['known_nodes'], settings['NODE_ID'], conn, "name", category)
+    results = search.global_search(query, settings.get_setting("known_nodes"), settings.get_setting("NODE_ID"), conn, "name", category)
     
     return jsonify(results)
 
@@ -363,7 +198,7 @@ def localsearch_endpoint():
 
     logger.debug(f"Received request for local search: search_term={search_term}, search_type={search_type}, category={category}")
 
-    matches = search.local_search(search_term, os.getenv('NODE_ID'), conn, search_type, category)
+    matches = search.local_search(search_term, settings.get_setting("NODE_ID"), conn, search_type, category)
 
     return jsonify(matches), 200
 
@@ -372,19 +207,19 @@ def md5_search(md5_hash):
     conn = None
     try:
         conn = get_db_connection()  # Retrieve a connection from the pool
-        results = search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], conn, "md5")
+        results = search.global_search(md5_hash, settings.get_setting("known_nodes"), settings.get_setting("NODE_ID"), conn, "md5")
         return render_template('md5_results.html', md5_hash=md5_hash, results=results)
     except Exception as e:
         logger.error(f"Error during MD5 search: {e}")
         return "An error occurred during the search."
     finally:
         if conn:
-            db_pool.putconn(conn)  # Return the connection to the pool after using it
+            put_connection(conn)
 
 @app.route('/json/md5_search/<md5_hash>')
 def md5_search_json(md5_hash):
     conn = get_db_connection()
-    return search.global_search(md5_hash, settings['known_nodes'], settings['NODE_ID'], conn, "md5")
+    return search.global_search(md5_hash, settings.get_setting("known_nodes"), settings.get_setting("NODE_ID"), conn, "md5")
     
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
@@ -419,8 +254,7 @@ def download_file(md5_hash):
 
 @app.route('/json/nodes')
 def nodes():
-    global settings
-    return jsonify(list(settings["known_nodes"]))
+    return jsonify(list(settings.get_setting("known_nodes")))
 
 @app.route('/total_file_size', methods=['GET'])
 def total_file_size():
@@ -436,8 +270,7 @@ def total_file_size():
     finally:
         connection.close()
 
-initialize_settings()
-threading.Thread(target=run_scheduler, daemon=True).start()
+start_scheduler()
 schedule_tasks()
 
 if __name__ == '__main__':
