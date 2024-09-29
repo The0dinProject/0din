@@ -13,6 +13,9 @@ def load_settings():
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, 'r') as f:
             settings = json.load(f)
+        # Convert 'known_nodes' back to a set if it exists
+        if 'known_nodes' in settings:
+            settings['known_nodes'] = set(settings['known_nodes'])
     else:
         # If the file doesn't exist, initialize with default settings
         settings = get_default_settings()
@@ -21,20 +24,25 @@ def load_settings():
 def get_default_settings():
     """Return default settings."""
     return {
-    'NODE_ID': os.getenv('NODE_ID', '127.0.0.1:5000'),
-    'LAST_EXECUTION_FILE': 'last_execution.txt',
-    'INDEX_FILES_TIME': 1,
-    'PEER_DISCOVER_INTERVAL': 1,
-    'DIRECTORY': '/the/directory/to/be/shared',
-    'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
-    'HEARTBEAT_INTERVAL': 10,
-    'known_nodes': set(os.getenv('KNOWN_NODES', '').split(', ')),
-}
+        'NODE_ID': os.getenv('NODE_ID', '127.0.0.1:5000'),
+        'LAST_EXECUTION_FILE': 'last_execution.txt',
+        'INDEX_FILES_TIME': 1,
+        'PEER_DISCOVER_INTERVAL': 1,
+        'DIRECTORY': '/the/directory/to/be/shared',
+        'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
+        'HEARTBEAT_INTERVAL': 10,
+        'known_nodes': set(os.getenv('KNOWN_NODES', '').split(', ')),
+    }
 
 def _save_settings():
     """Save the current settings to the JSON file."""
+    # Convert 'known_nodes' from set to list before saving
+    settings_to_save = settings.copy()
+    if 'known_nodes' in settings_to_save:
+        settings_to_save['known_nodes'] = list(settings_to_save['known_nodes'])
+    
     with open(SETTINGS_FILE, 'w') as f:
-        json.dump(settings, f, indent=4)
+        json.dump(settings_to_save, f, indent=4)
 
 def get_setting(key, default=None):
     """Retrieve a setting value by key."""
