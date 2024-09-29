@@ -29,7 +29,7 @@
 
 <!-- New button to call the indexer endpoint -->
 <h2>Indexing Controls</h2>
-<form method="post" action="{{ url_for('indexer') }}">
+<form method="post" action="{{ url_for('trigger_indexer') }}">
     <label for="path">Enter Path:</label>
     <input type="text" id="path" name="path" placeholder="Enter the path here" required>
     <button type="submit">Run Indexer</button>
