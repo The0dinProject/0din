@@ -73,38 +73,6 @@ def announce(announce_url, node_id, known_nodes, max_retries=3, timeout=5):
     logger.error(f"Failed to announce to {announce_url} after {max_retries} attempts")
     return set()
 
-
-def handle_announcement(node_id, received_known_nodes, known_nodes, response_url):
-    """
-    Handle an incoming announcement from another node, update the known nodes list,
-    and return the updated list of known nodes to the announcing node.
-    
-    Args:
-        node_id (str): The ID of the node making the announcement.
-        received_known_nodes (list): The list of known nodes received from the announcing node.
-        known_nodes (set): Set of known nodes to be updated.
-        announced_nodes (set): Set of announced nodes to avoid re-announcement.
-        response_url (str): URL to send the response with the list of known nodes.
-    
-    Returns:
-        set: Updated set of known nodes after processing the announcement.
-    """
-    logger.debug(f"Handling announcement from {node_id}")
-    known_nodes.add(node_id)
-    known_nodes.update(received_known_nodes)
-    logger.info(f"Updated known nodes with {received_known_nodes}")
-
-    payload = {"known_nodes": list(known_nodes)}
-    try:
-        response = requests.post(response_url, json=payload)
-        response.raise_for_status()
-        logger.info(f"Successfully sent response to {response_url}")
-    except requests.RequestException as e:
-        logger.error(f"Failed to send response to {response_url}: {e}")
-
-    return known_nodes
-
-
 def heartbeat_ping(node_url, timeout=5):
     """
     Send a heartbeat ping to a node to check if it is still alive.

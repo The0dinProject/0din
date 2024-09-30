@@ -280,14 +280,13 @@ def announce_endpoint():
     node_id = data.get("node_id")
     response_url = data.get("response_url")
     received_known_nodes = data.get("known_nodes", [])
+    logger.debug(f"Handling Announcement From {node_id}")
+    known_nodes = settings.get_setting("known_nodes")
+    known_nodes.add(node_id)
+    known_nodes.add(received_known_nodes)
+    settings.set_setting("known_nodes", known_nodes)
 
-    if not node_id or not response_url:
-        return jsonify({"error": "Missing node_id or response_url"}), 400
-
-    # Handle announcement
-    updated_known_nodes = peer_discovery.handle_announcement(node_id, received_known_nodes, settings.get_setting("known_nodes"), response_url)
-
-    return jsonify({"known_nodes": list(updated_known_nodes)}), 200
+    return jsonify({"known_nodes": list(known_nodes)}), 200
 
 @app.route('/heartbeat', methods=['GET'])
 def heartbeat():
