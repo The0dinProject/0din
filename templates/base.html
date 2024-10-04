@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FileHost - {% block title %}{% endblock %}</title>
+    <title>0din - {% block title %}{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="icon" href="/static/logo/favicon.ico" type="image/x-icon">
 </head>
@@ -11,7 +11,7 @@
     <header>
         <nav>
             <a href="/" class="logo">
-                <img src="/static/logo/logo.png" alt="FileHost Logo" width="150" height="50">
+                <img src="/static/logo/logo.png" alt="0din Logo" width="150" height="50">
             </a>
             <div class="theme-controls">
                 <select id="color-theme">
@@ -20,6 +20,15 @@
                     <option value="ocean">Ocean</option>
                     <option value="sunset">Sunset</option>
                 </select>
+
+                <div>
+                    <form action="/global_search" method="POST">
+                        <input type="text" id="query" name="query" placeholder="Search... " required>
+
+                        <button type="submit">Search</button>
+                    </form>
+                </div>
+
                 <button id="dark-mode-toggle" aria-label="Toggle dark mode">
                     <span class="sun">☀️</span>
                     <span class="moon">🌙</span>

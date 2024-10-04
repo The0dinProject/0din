@@ -3,29 +3,5 @@
 {% block title %}Global Search{% endblock %}
 
 {% block content %}
-<h1>Global Search</h1>
-<form action="/global_search" method="POST">
-    <label for="query">Search:</label>
-    <input type="text" id="query" name="query" required>
-    
-    <label for="category">Category (optional):</label>
-    <select id="category" name="category">
-        <option value="all">All</option>
-        <option value="movie">Movie</option>
-        <option value="tv show">TV Show</option>
-        <option value="book">Book</option>
-        <option value="audiobook">Audiobook</option>
-        <option value="podcast">Podcasts</option>
-        <option value="music">Music</option>
-        <option value="image">Image</option>
-        <option value="ebook">Ebooks</option>
-        <option value="compressed">Archives</option>
-        <option value="audio">Audio</option>
-        <option value="video">Video</option>
-        <option value="plaintext">Plaintext</option>
-        <option value="document">Documents</option>
-    </select>
-    
-    <button type="submit">Search</button>
-</form>
+    <h1>Welcome to 0din!</h1>
 {% endblock %}
