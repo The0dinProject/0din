@@ -4,6 +4,7 @@ import requests
 import logging
 from colorlog import ColoredFormatter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from previews import generate_image_preview
 
 # Logging configuration
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -61,21 +62,43 @@ def local_search(search_term, node_id, conn, search_type='name', category=None):
         cursor.execute(query, tuple([category, search_term] if category else [search_term]))
         results = cursor.fetchall()
 
+        # Determine the protocol for download URLs
         if os.getenv("ENABLE_SSL") == "true" or os.getenv("ENABLE_HTTPS_REDIRECT") == "true":
             protocol = "https"
         else:
             protocol = "http"
 
+        # Create a hidden directory for previews
+        shared_directory = os.getenv("SHARED_DIRECTORY")
+        hidden_directory = os.path.join(shared_directory, '.previews')
+
+        os.makedirs(hidden_directory, exist_ok=True)  # Create the hidden directory if it doesn't exist
+
         for row in results:
+            file_name = row[0]
+            file_path = row[1]
+            md5_hash = row[2]
+
+            # Generate the preview file name
+            preview_file_name = f"{os.path.splitext(file_name)[0]} - preview.webp"
+            output_file_path = os.path.join(hidden_directory, preview_file_name)
+
+            # Generate the image preview
+            try:
+                generate_image_preview(file_path, output_file_path)
+            except Exception as e:
+                logger.error(f"Failed to generate preview for {file_name}: {e}")
+
             match = {
-                'file_name': row[0],
-                'path': row[1],
-                'md5_hash': row[2],
+                'file_name': file_name,
+                'path': file_path,
+                'md5_hash': md5_hash,
                 'file_size': row[3],
                 'category': row[4],
                 'download_count': row[5],  # Added download_count to the result
                 'node_id': node_id,
-                'download_url': f"{protocol}://{node_id}/download/{row[2]}"
+                'download_url': f"{protocol}://{node_id}/download/{md5_hash}",
+                'preview_url': f"{protocol}://{node_id}/previews/.previews/{preview_file_name}"  # Assuming you have a way to serve these previews
             }
             matches.append(match)
 

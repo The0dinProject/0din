@@ -4,16 +4,19 @@
 
 {% block content %}
 <h1>Search Results for "{{ query }}"</h1>
-<ul>
+<div class="results-grid">
     {% for result in results %}
-    <li>
+    <div class="result-item">
         <a href="{{ url_for('md5_search', md5_hash=result['md5_hash']) }}">
-            {{ result['file_name'] }} - {{ result['file_size'] }} bytes ({{ result['category'] }} - {{ result['node_id']}})
+            <img src="{{ result['preview_url'] }}" alt="Preview Image" class="result-image">
+            <div class="result-info">
+                <p>{{ result['file_name'] }} - {{ result['file_size'] }} bytes ({{ result['category'] }} - {{ result['node_id']}})</p>
+                <span>Downloads: {{ result['download_count'] }}</span>
+            </div>
         </a>
-        <span> | Downloads: {{ result['download_count'] }}</span>
-    </li>
+    </div>
     {% endfor %}
-</ul>
+</div>
 <a href="/">Back to Search</a>
 {% endblock %}
 

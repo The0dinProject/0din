@@ -4,13 +4,17 @@
 
 {% block content %}
 <h1>Search Results for MD5: {{ md5_hash }}</h1>
-<ul>
+<div class="results-grid">
     {% for result in results %}
-        <li>
-            <a href="{{result.download_url}}">
-                {{ result.file_name }} - {{ result.file_size }} - {{ result.category }} - {{result.node_id}}
-            </a>
-        </li>
+    <div class="result-item">
+        <a href="{{ result.download_url }}">
+            <img src="{{ result.preview_url }}" alt="Preview Image" class="result-image">
+            <div class="result-info">
+                <p>{{ result.file_name }} - {{ result.file_size }} - {{ result.category }} - {{ result.node_id }}</p>
+            </div>
+        </a>
+    </div>
     {% endfor %}
-</ul>
+</div>
 {% endblock %}
+

@@ -156,3 +156,24 @@ a:hover {
     display: inline;
 }
 
+/* New styles for the grid layout */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px; /* Adjust space between grid items */
+}
+
+.result-item {
+    border: 1px solid #ccc; /* Optional styling */
+    border-radius: 4px; /* Optional styling */
+    padding: 8px; /* Optional styling */
+    text-align: center; /* Center text */
+}
+
+.result-image {
+    width: 100%; /* Ensures the image takes the full width of its container */
+    height: auto; /* Maintains aspect ratio */
+    max-height: 150px; /* Optional: limits the height of images */
+    object-fit: cover; /* Optional: ensures the image covers the container */
+}
+

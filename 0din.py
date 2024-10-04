@@ -12,7 +12,6 @@ from colorlog import ColoredFormatter
 from dotenv import load_dotenv
 from database import get_db_connection, put_connection
 from scheduler import start_scheduler, schedule_tasks
-import peer_discovery
 
 load_dotenv()
 
@@ -270,6 +269,36 @@ def total_file_size():
         return jsonify({'error': str(e)}), 500
     finally:
         connection.close()
+
+@app.route('/preview/<path:filename>', methods=['GET'])
+def serve_preview(filename):
+    """
+    Serve the image preview for the specified filename.
+
+    Args:
+        filename (str): The name of the file whose preview is requested.
+
+    Returns:
+        Response: The preview image file if found, otherwise a 404 error.
+    """
+    try:
+        # Get the shared directory from environment variable
+        shared_directory = os.getenv("SHARED_DIRECTORY")
+        hidden_directory = os.path.join(shared_directory, '.previews')
+
+        # Construct the full path to the preview file
+        preview_file_path = os.path.join(hidden_directory, f"{filename}")
+
+        # Check if the file exists
+        if not os.path.exists(preview_file_path):
+            logger.warning(f"Preview file not found: {preview_file_path}")
+            abort(404)  # Return a 404 error if the file does not exist
+
+        # Serve the file
+        return send_file(preview_file_path, mimetype='image/webp')
+    except Exception as e:
+        logger.error(f"Error serving preview for {filename}: {e}")
+        abort(500)
 
 @app.route('/announce', methods=['POST'])
 def announce_endpoint():
