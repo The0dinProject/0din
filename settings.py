@@ -28,7 +28,7 @@ def get_default_settings():
         'LAST_EXECUTION_FILE': 'last_execution.txt',
         'INDEX_FILES_TIME': 1,
         'PEER_DISCOVER_INTERVAL': 1,
-        'DIRECTORY': '/the/directory/to/be/shared',
+        'DIRECTORY': os.getenv("SHARED_DIRECTORY"),
         'URL': 'https://raw.githubusercontent.com/username/repository/branch/path/to/file.json',
         'HEARTBEAT_INTERVAL': 10,
         'known_nodes': set(os.getenv('KNOWN_NODES', '').split(', ')),
