@@ -64,6 +64,11 @@ nav {
     gap: 1rem;
 }
 
+.searchbar {
+    display: flex;
+    gap: 2rem;
+}
+
 main {
     max-width: 1200px;
     margin: 2rem auto;
