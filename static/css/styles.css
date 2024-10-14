@@ -66,7 +66,32 @@ nav {
 
 .searchbar {
     display: flex;
-    gap: 2rem;
+    gap: 1rem;
+    justify-content: flex-start;
+    align-items: center;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.searchbar input[type="text"] {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+}
+
+.searchbar button {
+    padding: 0.5rem 1rem;
+    background-color: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.searchbar button:hover {
+    background-color: var(--color-secondary);
 }
 
 main {
