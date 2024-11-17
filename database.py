@@ -1,11 +1,9 @@
 import os
-import psycopg2
-from psycopg2 import pool, OperationalError
+import sqlite3
 import time
 import logging
 from colorlog import ColoredFormatter
 
-# Logging configuration
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 formatter = ColoredFormatter(
     "%(asctime)s - %(name)s - %(log_color)s%(levelname)s%(reset)s - %(message)s",
@@ -24,51 +22,59 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
 
-def create_db_pool():
+DB_PATH = os.getenv("DB_PATH", "index.sqlite")
+
+# SQLite connection setup
+def create_sqlite_connection():
     max_attempts = 5
     attempt = 0
-    backoff_time = 1  # Initial backoff time in seconds
+    backoff_time = 1
 
     while attempt < max_attempts:
         try:
-            db_pool = pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=10,
-                dbname=os.getenv('DB_NAME'),
-                user=os.getenv('DB_USER'),
-                password=os.getenv('DB_PASSWORD'),
-                host=os.getenv('DB_HOST', 'localhost'),
-                port=os.getenv('DB_PORT', '5432')
-            )
-            # Test the connection
-            conn = db_pool.getconn()
-            db_pool.putconn(conn)  # Return the connection back to the pool
-            return db_pool
-        except OperationalError:
+            conn = sqlite3.connect(DB_PATH)
+            logger.info("Successfully connected to SQLite database.")
+            return conn
+        except sqlite3.Error as e:
             attempt += 1
-            print(f"Attempt {attempt} failed. Retrying in {backoff_time} seconds...")
+            logger.warning(f"Attempt {attempt} failed. Retrying in {backoff_time} seconds...")
+            logger.error(f"Error: {e}")
             time.sleep(backoff_time)
-            backoff_time *= 2  # Exponential backoff
+            backoff_time *= 2
 
-    raise Exception("Unable to connect to the database after multiple attempts, verify your database status.")
+    raise Exception("Unable to connect to the database after multiple attempts. Verify the database file.")
 
-# Usage
-try:
-    db_pool = create_db_pool()
-    print("Database pool created successfully.")
-except Exception as e:
-    print(f"Error creating database pool: {e}")
-
-def get_db_connection():
+def execute_query(query, params=None):
     try:
-        conn = db_pool.getconn()
-        if conn.closed != 0:
-            raise psycopg2.InterfaceError("Connection is closed.")
-        logger.info("Database connection retrieved from pool.")
-        return conn
-    except psycopg2.Error as e:
-        logger.error(f"Database connection failed: {e}")
+        conn = create_sqlite_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, params or ())
+        conn.commit()
+        logger.info("Query executed successfully.")
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        logger.error(f"Query execution failed: {e}")
         raise
+    finally:
+        conn.close()
+        logger.info("SQLite connection closed.")
 
-def put_connection(conn):
-    db_pool.putconn(conn)
+def init_db():
+    conn = create_sqlite_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                md5_hash TEXT NOT NULL,
+                path TEXT NOT NULL,
+                download_count INTEGER DEFAULT 0,
+                file_size INTEGER
+            );
+        """)
+        conn.commit()
+        logger.info("Database initialized successfully.")
+    except sqlite3.Error as e:
+        logger.error(f"Error initializing database: {e}")
+    finally:
+        conn.close()

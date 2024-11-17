@@ -4,6 +4,6 @@ import sys
 
 path = sys.argv[1]
 
-conn = database.get_db_connection()
+conn = database.create_sqlite_connection()
 
 indexer.indexer(path, conn)

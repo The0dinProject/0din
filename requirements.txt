@@ -5,7 +5,6 @@ ebooklib
 flask
 gunicorn
 matplotlib
-psycopg2-binary
 pydub
 pymupdf
 python-docx
@@ -13,3 +12,4 @@ python-dotenv
 python-pptx
 requests
 schedule
+requests

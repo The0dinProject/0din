@@ -25,3 +25,4 @@ Thumbs.db
 # Odin related files
 credentials.json
 settings.json
+index.sqlite

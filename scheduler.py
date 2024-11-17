@@ -5,7 +5,7 @@ import logging
 import requests
 from datetime import datetime, timedelta
 from settings import get_setting, return_all, set_setting
-from database import get_db_connection
+from database import create_sqlite_connection
 import peer_discovery
 import indexer
 from colorlog import ColoredFormatter
@@ -32,7 +32,7 @@ logger.addHandler(console_handler)
 def run_indexer():
     """Runs the indexer task."""
     logger.info("Running indexer...")
-    conn = get_db_connection()
+    conn = create_sqlite_connection()
     
     # Run your actual indexing logic here
     indexer.indexer(get_setting('DIRECTORY'), conn)

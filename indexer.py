@@ -1,10 +1,9 @@
 import os
 import hashlib
-import psycopg2
-from psycopg2 import pool
 import re
 import logging
 import colorlog
+from database import init_db
 
 # Configure logger with colorlog
 logger = colorlog.getLogger(__name__)
@@ -27,17 +26,15 @@ logger.setLevel(logging.DEBUG)
 def _calculate_md5(file_path, connection):
     """Calculate or reuse the MD5 hash of a given file."""
     logger.debug(f"Checking MD5 for {file_path}")
-    
-    # Check if the file's hash is already stored in the database
+
     with connection.cursor() as cursor:
         cursor.execute("SELECT md5_hash FROM files WHERE path = %s;", (file_path,))
         result = cursor.fetchone()
-    
+        
     if result:
         logger.info(f"Reusing existing MD5 for {file_path}: {result[0]}")
-        return result[0]  # Reuse the stored MD5 hash
+        return result[0]
     
-    # If not found, calculate MD5 hash
     logger.debug(f"Calculating MD5 for {file_path}")
     md5_hash = hashlib.md5()
     try:
@@ -90,6 +87,8 @@ def _detect_category(file_path, file_extension):
 
 def _load_exclusion_patterns(directory):
     """Load the .exclude_patterns file if it exists in the directory."""
+    if directory is None:
+        raise ValueError("Directory cannot be None. Please check your settings.")
     logger.debug(f"Loading exclusion patterns from {directory}")
     exclude_file_path = os.path.join(directory, ".exclude_patterns")
     if os.path.exists(exclude_file_path):
@@ -108,29 +107,7 @@ def _should_exclude(file_path, exclude_patterns):
             logger.info(f"File {file_path} excluded by pattern {pattern.pattern}")
             return True
     return False
-
-def _create_database(connection):
-    """Create the files table if it doesn't exist."""
-    logger.debug("Creating database table if not exists")
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS files (
-                id SERIAL PRIMARY KEY,
-                file_name VARCHAR(255),
-                path TEXT,
-                md5_hash VARCHAR(32) UNIQUE,
-                file_size BIGINT,
-                category VARCHAR(100),
-                date_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                download_count INT DEFAULT 0  -- New field added
-            );
-            """)
-            connection.commit()
-            logger.info("Database table created or already exists.")
-    except Exception as e:
-        logger.critical(f"Error creating database table: {e}")
-
+    
 def _index_directory(directory, exclude_patterns, connection):
     """Index the files in the given directory and its subdirectories."""
     logger.debug(f"Indexing directory: {directory}")
@@ -201,7 +178,7 @@ def indexer(directory, connection):
 
 
     # Create the database table if it doesn't exist
-    _create_database(connection)
+    init_db()
 
     # Load exclusion patterns from the parent directory
     exclude_patterns = _load_exclusion_patterns(directory)

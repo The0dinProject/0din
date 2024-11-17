@@ -4,13 +4,13 @@ import logging
 import secrets
 import search
 import indexer
-import psycopg2
+import sqlite3
 import settings
 from flask import Flask, render_template, redirect, request, jsonify, flash, send_file, abort, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from colorlog import ColoredFormatter
 from dotenv import load_dotenv
-from database import get_db_connection, put_connection
+from database import execute_query, init_db, create_sqlite_connection
 from scheduler import start_scheduler, schedule_tasks
 
 load_dotenv()
@@ -33,6 +33,8 @@ console_handler.setFormatter(formatter)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(console_handler)
+
+DB_PATH = os.getenv("DB_PATH", "index.sqlite")
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -66,6 +68,10 @@ def check_setup():
 
     if request.path.startswith('/static') or request.endpoint in ['setup', 'login']:
         return
+    
+    if not os.path.exists(os.getenv('DB_PATH')):
+        logger.info("Initializing database...")
+        init_db()
 
     if not os.path.exists('credentials.json'):
         return redirect(url_for('setup'))
@@ -146,7 +152,7 @@ def trigger_indexer():
     if not session.get('logged_in'):
         return "Unauthorized", 401  # Return an unauthorized response
 
-    conn = get_db_connection()  # Call the function to get the connection
+    conn = create_sqlite_connection()  # Call the function to get the connection
 
     # Assuming 'path' is passed in the POST request body
     path = request.json.get('path')  # Retrieve path from JSON payload
@@ -165,7 +171,7 @@ def home():
 
 @app.route('/global_search', methods=['POST'])
 def global_search_route():
-    conn = get_db_connection()
+    conn = create_sqlite_connection()
     query = request.form.get('query')
     category = request.form.get('category', None)
     if category == 'all':
@@ -177,7 +183,7 @@ def global_search_route():
 
 @app.route('/json/global_search', methods=['POST'])
 def global_search_json():
-    conn = get_db_connection()
+    conn = create_sqlite_connection()
     query = request.form.get('query')
     category = request.form.get('category', None)
     if category == 'all':
@@ -189,7 +195,7 @@ def global_search_json():
 
 @app.route('/localsearch', methods=['POST'])
 def localsearch_endpoint():
-    conn = get_db_connection()
+    conn = create_sqlite_connection()
     data = request.get_json()
 
     search_term = data.get('search_term')
@@ -206,7 +212,7 @@ def localsearch_endpoint():
 def md5_search(md5_hash):
     conn = None
     try:
-        conn = get_db_connection()  # Retrieve a connection from the pool
+        conn = create_sqlite_connection()  # Retrieve a connection from the pool
         results = search.global_search(md5_hash, settings.get_setting("known_nodes"), settings.get_setting("NODE_ID"), conn, "md5")
         return render_template('md5_results.html', md5_hash=md5_hash, results=results)
     except Exception as e:
@@ -218,12 +224,12 @@ def md5_search(md5_hash):
 
 @app.route('/json/md5_search/<md5_hash>')
 def md5_search_json(md5_hash):
-    conn = get_db_connection()
+    conn = create_sqlite_connection()
     return search.global_search(md5_hash, settings.get_setting("known_nodes"), settings.get_setting("NODE_ID"), conn, "md5")
     
 @app.route('/download/<md5_hash>')
 def download_file(md5_hash):
-    conn = get_db_connection()
+    conn = create_sqlite_connection()
     cursor = conn.cursor()
     
     try:
@@ -258,14 +264,14 @@ def nodes():
 
 @app.route('/total_file_size', methods=['GET'])
 def total_file_size():
-    connection = get_db_connection()
+    connection = create_sqlite_connection()
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT SUM(file_size) FROM files;")
             result = cursor.fetchone()
             total_size = result[0] if result[0] is not None else 0
             return jsonify({'total_file_size': total_size})
-    except psycopg2.Error as e:
+    except sqlite3.Error as e:
         return jsonify({'error': str(e)}), 500
     finally:
         connection.close()
